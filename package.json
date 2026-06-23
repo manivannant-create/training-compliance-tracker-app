@@ -1,0 +1,12 @@
+{
+  "name": "training-compliance-tracker",
+  "version": "1.0.0",
+  "description": "Training Compliance Tracker — combined frontend + CORS proxy, deployed as a single service",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
