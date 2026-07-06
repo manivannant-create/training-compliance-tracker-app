@@ -1,12 +1,8 @@
 {
   "name": "training-compliance-tracker",
-  "version": "1.0.0",
-  "description": "Training Compliance Tracker — combined frontend + CORS proxy, deployed as a single service",
+  "version": "2.0.0",
+  "description": "Training Compliance Tracker — 16-step validation against MSMS APIs",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18.0.0" }
 }
