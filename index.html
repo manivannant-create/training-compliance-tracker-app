@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Training Compliance Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#0a0f1e;--s1:#111827;--s2:#1a2235;--s3:#1e2d44;--bd:#1f3050;
+  --ac:#00d4ff;--pu:#7c3aed;--gn:#10b981;--wn:#f59e0b;--rd:#ef4444;
+  --t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;z-index:-1;
+  background:radial-gradient(ellipse 80% 50% at 10% 20%,rgba(0,212,255,.05) 0%,transparent 60%),
+             radial-gradient(ellipse 60% 40% at 90% 80%,rgba(124,58,237,.07) 0%,transparent 60%);}
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 22px;height:56px;
+  background:rgba(17,24,39,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--bd);
+  position:sticky;top:0;z-index:100;}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 10px var(--ac);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tbr{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.badge{font-size:.64rem;font-family:'JetBrains Mono',monospace;padding:2px 7px;border-radius:20px;border:1px solid;font-weight:500;}
+.bac{border-color:var(--ac);color:var(--ac);background:rgba(0,212,255,.08);}
+.brd{border-color:var(--rd);color:var(--rd);background:rgba(239,68,68,.08);}
+.upill{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:30px;background:var(--s2);border:1px solid var(--bd);font-size:.76rem;}
+.av{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--ac),var(--pu));display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;}
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;min-height:100vh;}
+.wrap{display:flex;flex:1;}
+.sidebar{width:210px;min-height:calc(100vh - 56px);background:var(--s1);border-right:1px solid var(--bd);
+  padding:14px 0;display:flex;flex-direction:column;gap:1px;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;}
+.nsec{padding:0 12px 4px;font-size:.61rem;font-weight:600;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-top:8px;}
+.ni{display:flex;align-items:center;gap:7px;padding:7px 14px;cursor:pointer;color:var(--t2);font-size:.8rem;
+  font-weight:500;transition:all .15s;border-left:3px solid transparent;}
+.ni:hover{color:var(--t1);background:var(--s2);}
+.ni.active{color:var(--ac);background:rgba(0,212,255,.05);border-left-color:var(--ac);}
+.content{flex:1;padding:22px;overflow-y:auto;}
+.page{display:none;}.page.active{display:block;}
+/* ── STAT CARDS ── */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px;margin-bottom:18px;}
+.sc{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:15px;position:relative;overflow:hidden;}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.sc.ac::before{background:linear-gradient(90deg,var(--ac),transparent);}
+.sc.gn::before{background:linear-gradient(90deg,var(--gn),transparent);}
+.sc.wn::before{background:linear-gradient(90deg,var(--wn),transparent);}
+.sc.rd::before{background:linear-gradient(90deg,var(--rd),transparent);}
+.sc.pu::before{background:linear-gradient(90deg,var(--pu),transparent);}
+.slbl{font-size:.64rem;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:5px;}
+.sval{font-size:1.65rem;font-weight:700;font-family:'JetBrains Mono',monospace;}
+/* ── DAILY BANNER ── */
+.dbanner{background:var(--s1);border:1px solid var(--bd);border-radius:11px;padding:14px 18px;margin-bottom:16px;}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin-top:9px;}
+.dcard{border-radius:8px;padding:11px 12px;text-align:center;border:1px solid;}
+.dcard .dl{font-size:.62rem;color:var(--t2);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:3px;}
+.dcard .dv{font-size:1.3rem;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.dcard .ds{font-size:.7rem;margin-top:1px;}
+.db{border-color:rgba(0,212,255,.3);background:rgba(0,212,255,.06);}.db .dv{color:var(--ac);}
+.dg{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.06);}.dg .dv{color:var(--gn);}
+.dp{border-color:rgba(124,58,237,.3);background:rgba(124,58,237,.06);}.dp .dv{color:#a78bfa;}
+.dt{border-color:rgba(20,184,166,.3);background:rgba(20,184,166,.06);}.dt .dv{color:#2dd4bf;}
+/* ── TABLE ── */
+.tw{background:var(--s1);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:16px;}
+.th{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-bottom:1px solid var(--bd);}
+.tt{font-weight:600;font-size:.88rem;}
+table{width:100%;border-collapse:collapse;font-size:.76rem;}
+thead th{padding:8px 11px;text-align:left;color:var(--t3);font-weight:600;font-size:.63rem;
+  text-transform:uppercase;letter-spacing:.07em;background:var(--s2);border-bottom:1px solid var(--bd);white-space:nowrap;}
+tbody tr{border-bottom:1px solid rgba(31,48,80,.45);transition:background .12s;}
+tbody tr:hover{background:var(--s2);}
+tbody td{padding:8px 11px;vertical-align:middle;}
+.tid{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ac);font-weight:500;}
+/* ── COMPLIANCE BAR ── */
+.cbar{display:flex;align-items:center;gap:5px;}
+.btrk{flex:1;height:5px;background:var(--s3);border-radius:3px;min-width:45px;}
+.bfil{height:100%;border-radius:3px;transition:width .5s;}
+.pct{font-family:'JetBrains Mono',monospace;font-size:.68rem;font-weight:700;white-space:nowrap;}
+.rp{font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:6px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+.rph{background:rgba(239,68,68,.15);color:var(--rd);border:1px solid rgba(239,68,68,.3);}
+.rpm{background:rgba(245,158,11,.15);color:var(--wn);border:1px solid rgba(245,158,11,.3);}
+.rpl{background:rgba(16,185,129,.15);color:var(--gn);border:1px solid rgba(16,185,129,.3);}
+/* ── CHIPS ── */
+.chip{display:inline-block;padding:2px 6px;border-radius:4px;font-size:.62rem;font-weight:600;}
+.chac{background:rgba(0,212,255,.1);color:var(--ac);}
+.chpu{background:rgba(124,58,237,.1);color:#a78bfa;}
+.chgn{background:rgba(16,185,129,.1);color:var(--gn);}
+.chrd{background:rgba(239,68,68,.1);color:var(--rd);}
+.chwn{background:rgba(245,158,11,.1);color:var(--wn);}
+.chgr{background:rgba(100,116,139,.1);color:var(--t3);}
+/* ── STEP ROWS (detail view) ── */
+.phase-block{margin-bottom:16px;}
+.phase-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd);}
+.phase-lbl{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--t3);}
+.phase-badge{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:4px;}
+.ph-pre {background:rgba(124,58,237,.15);color:#a78bfa;}
+.ph-dur {background:rgba(245,158,11,.15); color:var(--wn);}
+.ph-post{background:rgba(16,185,129,.15); color:var(--gn);}
+.step-row{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border-radius:8px;
+  border:1px solid var(--bd);margin-bottom:5px;background:var(--s2);}
+.step-row.pass{border-color:var(--gn);background:rgba(16,185,129,.05);}
+.step-row.fail{border-color:var(--rd);background:rgba(239,68,68,.04);}
+.step-row.skip{opacity:.55;}
+.step-icon{font-size:.95rem;flex-shrink:0;margin-top:1px;width:18px;text-align:center;}
+.step-body{flex:1;min-width:0;}
+.step-title{font-size:.79rem;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.step-code{font-family:'JetBrains Mono',monospace;font-size:.63rem;color:var(--t3);}
+.step-meta{font-size:.64rem;color:var(--t3);margin-top:1px;}
+.step-msg{font-size:.7rem;margin-top:4px;padding:3px 8px;border-radius:4px;display:inline-block;line-height:1.4;}
+.msg-ok  {background:rgba(16,185,129,.1);color:var(--gn);}
+.msg-fail{background:rgba(239,68,68,.1); color:var(--rd);}
+.msg-skip{background:rgba(100,116,139,.1);color:var(--t3);}
+/* ── DATA SECTION (detail tabs) ── */
+.data-section{margin-bottom:18px;}
+.ds-hdr{font-size:.65rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;}
+.ds-ep{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ac);font-weight:400;}
+.ds-count{font-size:.6rem;padding:1px 6px;border-radius:4px;}
+.cnt-ok{background:rgba(16,185,129,.1);color:var(--gn);}
+.cnt-no{background:rgba(239,68,68,.1);color:var(--rd);}
+.dgrid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:7px;margin-bottom:8px;}
+.di{background:var(--s3);border-radius:6px;padding:7px 9px;}
+.dikey{font-size:.6rem;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+.dival{font-size:.75rem;color:var(--t1);margin-top:2px;word-break:break-word;}
+.empty-row{font-size:.75rem;color:var(--rd);padding:8px 2px;}
+/* template check row */
+.tpl-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
+.tpl-chip{font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:600;border:1px solid;}
+.tpl-ok{background:rgba(16,185,129,.1);color:var(--gn);border-color:rgba(16,185,129,.3);}
+.tpl-no{background:rgba(239,68,68,.1); color:var(--rd);border-color:rgba(239,68,68,.3);}
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:7px;border:none;
+  cursor:pointer;font-family:'Sora',sans-serif;font-size:.76rem;font-weight:600;transition:all .15s;}
+.btp{background:var(--ac);color:#000;}.btp:hover{background:#00b8d9;}
+.bts{background:var(--s2);color:var(--t1);border:1px solid var(--bd);}.bts:hover{background:var(--s3);}
+.btd{background:rgba(239,68,68,.15);color:var(--rd);border:1px solid rgba(239,68,68,.3);}
+.btg{background:var(--gn);color:#000;}.btg:hover{background:#0d9e6e;}
+.sm{padding:3px 8px;font-size:.7rem;}
+.ic{width:27px;height:27px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:5px;}
+/* ── MODAL ── */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);backdrop-filter:blur(4px);
+  z-index:200;align-items:center;justify-content:center;padding:14px;}
+.mo.open{display:flex;}
+.modal{background:var(--s1);border:1px solid var(--bd);border-radius:13px;width:100%;max-width:920px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;}
+.mhd{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--bd);}
+.mtl{font-weight:700;font-size:.95rem;}
+.mbd{padding:18px;overflow-y:auto;flex:1;}
+.mft{padding:12px 18px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:7px;}
+/* ── FORM ── */
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.fg{display:flex;flex-direction:column;gap:4px;}
+.fg.full{grid-column:1/-1;}
+label{font-size:.7rem;color:var(--t2);font-weight:600;}
+input,select,textarea{background:var(--s2);border:1px solid var(--bd);border-radius:7px;color:var(--t1);
+  padding:7px 10px;font-family:'Sora',sans-serif;font-size:.79rem;transition:border-color .15s;width:100%;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ac);}
+select option{background:var(--s2);}
+textarea{resize:vertical;min-height:60px;}
+/* ── FILTERS ── */
+.filters{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;}
+.sb{position:relative;flex:1;min-width:150px;}
+.sb input{padding-left:28px;}
+.sic{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.8rem;}
+/* ── TABS ── */
+.tabbar{display:flex;gap:3px;margin-bottom:14px;background:var(--s2);border-radius:8px;padding:3px;}
+.tab{padding:6px 13px;border-radius:6px;cursor:pointer;font-size:.76rem;font-weight:600;color:var(--t3);transition:all .15s;}
+.tab.active{background:var(--s3);color:var(--t1);}
+/* ── LOADER / TOAST ── */
+.ld{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,212,255,.2);
+  border-top-color:var(--ac);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lov{position:fixed;inset:0;background:rgba(10,15,30,.87);z-index:300;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:11px;}
+.lt{color:var(--ac);font-size:.83rem;font-weight:500;}
+#toast{position:fixed;bottom:18px;right:18px;z-index:500;display:flex;flex-direction:column;gap:5px;}
+.ti{padding:9px 13px;border-radius:8px;font-size:.76rem;font-weight:500;animation:sli .3s ease;max-width:290px;}
+.tis{background:#0f2e22;border:1px solid var(--gn);color:var(--gn);}
+.tie{background:#2e0f0f;border:1px solid var(--rd);color:var(--rd);}
+.tii{background:#0f1f2e;border:1px solid var(--ac);color:var(--ac);}
+@keyframes sli{from{transform:translateX(100%);opacity:0}to{transform:none;opacity:1}}
+/* ── MISC ── */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.stl{font-size:1.05rem;font-weight:700;letter-spacing:-.01em;}
+.sub{font-size:.75rem;color:var(--t3);margin-top:1px;}
+.alert{padding:9px 13px;border-radius:8px;font-size:.77rem;margin-bottom:13px;display:flex;gap:7px;align-items:flex-start;}
+.alc{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);}
+.empty{text-align:center;padding:36px 20px;color:var(--t3);font-size:.8rem;}
+/* ── LOGIN ── */
+.lp{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);}
+.lcard{background:var(--s1);border:1px solid var(--bd);border-radius:16px;padding:34px;width:100%;max-width:370px;}
+.llogo{text-align:center;margin-bottom:22px;}
+.llogo h1{font-size:1.2rem;font-weight:700;}
+.llogo p{color:var(--t3);font-size:.78rem;margin-top:3px;}
+.lform{display:flex;flex-direction:column;gap:10px;}
+#lpEdit{display:none;align-items:center;gap:5px;margin-top:6px;}
+#lpEdit.show{display:flex;}
+@media(max-width:768px){.sidebar{display:none;}.content{padding:12px;}.fgrid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginPage" class="lp" style="display:none;">
+  <div class="lcard">
+    <div class="llogo">
+      <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,var(--ac),var(--pu));margin:0 auto 11px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;">🎓</div>
+      <h1>Training Compliance Tracker</h1>
+      <p>MSMS · 16-Step Validation</p>
+    </div>
+    <div class="lform">
+      <div class="fg"><label>Username / Phone</label><input type="text" id="lUser" placeholder="Enter username or phone"></div>
+      <div class="fg"><label>Reference Code</label><input type="password" id="lRef" placeholder="Enter reference code"></div>
+      <button class="btn btp" style="width:100%;justify-content:center;padding:9px;" onclick="doLogin()"><span id="lBtnTxt">Sign In</span></button>
+    </div>
+    <p style="text-align:center;margin-top:10px;font-size:.68rem;color:var(--t3);">
+      Proxy: <span id="lpDisplay">same-origin</span>
+      <a href="#" onclick="document.getElementById('lpEdit').classList.add('show');return false;" style="color:var(--ac);margin-left:4px;">change</a>
+    </p>
+    <div id="lpEdit"><input type="text" id="lpInput" placeholder="http://localhost:3001" style="font-size:.74rem;"><button class="btn bts sm" onclick="saveLProxy()">Save</button></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" class="app" style="display:none;">
+  <div class="topbar">
+    <div class="logo"><div class="logo-dot"></div>Training Compliance Tracker</div>
+    <div class="tbr">
+      <span class="badge bac">⬤ LIVE</span>
+      <span class="badge brd" id="riskBadge">— AT RISK</span>
+      <button class="btn bts sm" onclick="syncAll()">🔄 Sync</button>
+      <button class="btn btg sm" onclick="genPDF()">📄 PDF</button>
+      <button class="btn bts ic" onclick="openSettings()" title="Proxy Settings">⚙️</button>
+      <div class="upill"><div class="av">TL</div><span id="userLabel">Training Lead</span></div>
+      <button class="btn bts sm" onclick="logout()" title="Sign out">↩</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <nav class="sidebar">
+      <div style="padding:0 12px 10px;font-size:.68rem;color:var(--t3);">Training Compliance</div>
+      <div class="nsec">Overview</div>
+      <div class="ni active" data-page="dashboard" onclick="showPage('dashboard')"><span>📊</span> Dashboard</div>
+      <div class="ni" data-page="trainings" onclick="showPage('trainings')"><span>🗂️</span> All Trainings</div>
+      <div class="ni" data-page="compliance" onclick="showPage('compliance')"><span>✅</span> Compliance Check</div>
+      <div class="nsec">Reports</div>
+      <div class="ni" data-page="deviations" onclick="showPage('deviations')"><span>⚠️</span> Deviations</div>
+      <div class="ni" data-page="steps" onclick="showPage('steps')"><span>📋</span> Steps Reference</div>
+      <div class="ni" data-page="debug" onclick="showPage('debug')"><span>🔌</span> API Debug</div>
+      <div class="nsec">Manage</div>
+      <div class="ni" data-page="add" onclick="openAddModal()"><span>➕</span> Add Training</div>
+    </nav>
+
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="sh">
+          <div><div class="stl">Dashboard</div><div class="sub" id="dashSub">Loading...</div></div>
+          <button class="btn btp sm" onclick="syncAll()"><span class="ld" id="syncLd" style="display:none;"></span> 🔄 Sync All</button>
+        </div>
+        <!-- Daily banner -->
+        <div class="dbanner">
+          <div style="font-size:.68rem;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.08em;">Summary</div>
+          <div class="dgrid">
+            <div class="dcard db"><div class="dl">Trainings</div><div class="dv" id="dTotal">—</div></div>
+            <div class="dcard dg"><div class="dl">Participants</div><div class="dv" id="dParts">—</div><div class="ds" id="dPartsPct" style="color:var(--gn);"></div></div>
+            <div class="dcard dp"><div class="dl">Avg Compliance</div><div class="dv" id="dAvg">—</div></div>
+            <div class="dcard dt"><div class="dl">Fully Passed</div><div class="dv" id="dCompliant">—</div></div>
+          </div>
+        </div>
+        <div id="critAlert" class="alert alc" style="display:none;"><span>🔴</span><div><strong>CRITICAL:</strong> <span id="critMsg"></span></div></div>
+        <div class="sgrid">
+          <div class="sc ac"><div class="slbl">Total Trainings</div><div class="sval" style="color:var(--ac);" id="sTotal">—</div></div>
+          <div class="sc gn"><div class="slbl">9 Trackable Steps</div><div class="sval" style="color:var(--gn);" id="sTrack">9</div></div>
+          <div class="sc wn"><div class="slbl">Avg Compliance</div><div class="sval" style="color:var(--wn);" id="sAvg">—</div></div>
+          <div class="sc rd"><div class="slbl">At Risk (&lt;55%)</div><div class="sval" style="color:var(--rd);" id="sRisk">—</div></div>
+          <div class="sc pu"><div class="slbl">With Deviations</div><div class="sval" style="color:#a78bfa;" id="sDev">—</div></div>
+        </div>
+        <div class="tw">
+          <div class="th"><div class="tt">⚠️ Needs Attention (worst first)</div><button class="btn bts sm" onclick="showPage('trainings')">View All →</button></div>
+          <table><thead><tr><th>ID</th><th>Training Name</th><th>Type</th><th>Dates</th><th>Participants</th><th>Compliance</th><th>Failed Steps</th><th>Risk</th><th></th></tr></thead>
+          <tbody id="dashBody"><tr><td colspan="9" class="empty">Click Sync to load trainings from API</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <!-- ALL TRAININGS -->
+      <div class="page" id="page-trainings">
+        <div class="sh">
+          <div><div class="stl">All Trainings</div><div class="sub">Add · Edit · Delete</div></div>
+          <button class="btn btp sm" onclick="openAddModal()">➕ Add</button>
+        </div>
+        <div class="filters">
+          <div class="sb"><span class="sic">🔍</span><input type="text" placeholder="Search ID or name..." oninput="applyFilters()" id="srch"></div>
+          <select class="bts sm" onchange="applyFilters()" id="ftType" style="padding:7px 10px;border-radius:7px;border:1px solid var(--bd);">
+            <option value="">All Types</option><option>Academic</option><option>Non Academic</option>
+          </select>
+          <select class="bts sm" onchange="applyFilters()" id="ftRisk" style="padding:7px 10px;border-radius:7px;border:1px solid var(--bd);">
+            <option value="">All Risk</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option>
+          </select>
+          <select class="bts sm" onchange="applyFilters()" id="ftStatus" style="padding:7px 10px;border-radius:7px;border:1px solid var(--bd);">
+            <option value="">All Status</option><option>pending</option><option>completed</option><option>inprogress</option>
+          </select>
+        </div>
+        <div class="tw"><table>
+          <thead><tr><th>ID</th><th>Training Name</th><th>Type</th><th>Status</th><th>Dates</th><th>Trainees</th><th>Participants</th><th>Compliance</th><th>Failed Steps</th><th>Risk</th><th>Actions</th></tr></thead>
+          <tbody id="trainBody"><tr><td colspan="11" class="empty">Loading...</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <!-- COMPLIANCE CHECK -->
+      <div class="page" id="page-compliance">
+        <div class="sh"><div><div class="stl">Compliance Check</div><div class="sub">Per-training step validation — grouped by phase</div></div></div>
+        <div class="filters">
+          <div class="sb"><span class="sic">🔍</span><input type="text" placeholder="Filter trainings..." oninput="filterComp(this.value)"></div>
+        </div>
+        <div id="compList"></div>
+      </div>
+
+      <!-- DEVIATIONS -->
+      <div class="page" id="page-deviations">
+        <div class="sh">
+          <div><div class="stl">Deviations</div><div class="sub">Trackable steps that failed — escalate to team</div></div>
+          <button class="btn btd sm" onclick="genPDF()">📄 Escalation Report</button>
+        </div>
+        <div id="devList"></div>
+      </div>
+
+      <!-- STEPS REFERENCE -->
+      <div class="page" id="page-steps">
+        <div class="sh"><div><div class="stl">16 Mandatory Steps</div><div class="sub">9 tracked via MSMS API now · 7 deferred (LMS / Training App)</div></div></div>
+        <div class="tw"><table>
+          <thead><tr><th>Code</th><th>Step Name</th><th>Phase</th><th>When</th><th>App</th><th>Response</th><th>Validation Rule</th><th>Status</th></tr></thead>
+          <tbody id="stepsBody"></tbody>
+        </table></div>
+      </div>
+
+      <!-- API DEBUG -->
+      <div class="page" id="page-debug">
+        <div class="sh">
+          <div><div class="stl">API Debug</div><div class="sub">Diagnose login and API connection issues</div></div>
+          <button class="btn btp sm" onclick="runDebug()">🔍 Test All Endpoints</button>
+        </div>
+
+        <!-- Login tester -->
+        <div class="tw" style="margin-bottom:16px;">
+          <div class="th"><div class="tt">🔑 Login Payload Tester</div></div>
+          <div style="padding:14px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:12px;">
+              <div class="fg"><label>Username / Phone</label><input type="text" id="dbgUser" placeholder="9894955138"></div>
+              <div class="fg"><label>Reference / Password</label><input type="password" id="dbgRef" placeholder="msms@5138"></div>
+              <div class="fg" style="justify-content:flex-end;padding-top:20px;">
+                <button class="btn btp sm" onclick="testLoginVariants()">Test All Formats →</button>
+              </div>
+            </div>
+            <div id="loginVariantOut"></div>
+          </div>
+        </div>
+
+        <div id="debugOut">
+          <div class="empty">Click "Test All Endpoints" to probe each API and see raw responses</div>
+        </div>
+      </div>
+
+<!-- DETAIL MODAL -->
+<div class="mo" id="detailMo">
+  <div class="modal" style="max-width:900px;">
+    <div class="mhd"><div class="mtl" id="detailTitle">Training Details</div><button class="btn bts ic" onclick="closeMo('detailMo')">✕</button></div>
+    <div class="mbd" id="detailBody"></div>
+    <div class="mft">
+      <span style="font-size:.68rem;color:var(--t3);margin-right:auto;" id="detailSyncTime"></span>
+      <button class="btn bts sm" id="detailResyncBtn">🔄 Re-sync</button>
+      <button class="btn bts" onclick="closeMo('detailMo')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="mo" id="editMo">
+  <div class="modal" style="max-width:500px;">
+    <div class="mhd"><div class="mtl" id="editTitle">Add Training</div><button class="btn bts ic" onclick="closeMo('editMo')">✕</button></div>
+    <div class="mbd">
+      <div class="fgrid">
+        <div class="fg"><label>Training ID (numeric, from API)</label><input type="text" id="eId" placeholder="e.g. 1362"></div>
+        <div class="fg"><label>Training Name</label><input type="text" id="eName" placeholder="Full training name"></div>
+        <div class="fg"><label>Type</label><select id="eType"><option>Academic</option><option>Non Academic</option></select></div>
+        <div class="fg"><label>Status</label><select id="eStatus"><option>pending</option><option>completed</option><option>inprogress</option></select></div>
+        <div class="fg"><label>Start Date</label><input type="date" id="eStart"></div>
+        <div class="fg"><label>End Date</label><input type="date" id="eEnd"></div>
+        <div class="fg"><label>No. of Trainees</label><input type="number" id="eTrainees" placeholder="Trainers count"></div>
+        <div class="fg"><label>No. of Participants</label><input type="number" id="eParts" placeholder="Participants count"></div>
+        <div class="fg full"><label>Location</label><input type="text" id="eLoc" placeholder="Venue / location"></div>
+        <div class="fg full"><label>Detail / Notes</label><textarea id="eNotes"></textarea></div>
+      </div>
+    </div>
+    <div class="mft"><button class="btn bts" onclick="closeMo('editMo')">Cancel</button><button class="btn btp" onclick="saveTraining()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="mo" id="settingsMo">
+  <div class="modal" style="max-width:440px;">
+    <div class="mhd"><div class="mtl">⚙️ Proxy Settings</div><button class="btn bts ic" onclick="closeMo('settingsMo')">✕</button></div>
+    <div class="mbd">
+      <div class="fg" style="margin-bottom:12px;">
+        <label>Proxy URL (blank = same-origin / built-in)</label>
+        <input type="text" id="sProxy" placeholder="http://localhost:3001 or leave blank">
+        <div style="font-size:.68rem;color:var(--t3);margin-top:5px;line-height:1.5;">
+          On Render, leave blank — the proxy is built into this server. Only change this if you're running the HTML file separately (local dev).
+        </div>
+      </div>
+      <div id="proxyStatus" style="font-size:.76rem;margin-top:8px;"></div>
+    </div>
+    <div class="mft">
+      <button class="btn bts sm" onclick="testProxy()">🔍 Test</button>
+      <button class="btn btp" onclick="saveProxy()">💾 Save & Reload</button>
+    </div>
+  </div>
+</div>
+
+<div class="lov" id="loadOv" style="display:none;">
+  <div class="ld" style="width:34px;height:34px;border-width:3px;"></div>
+  <div class="lt" id="loadTxt">Loading...</div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════
+// 16 MANDATORY STEPS — exact mapping from Training_Steps.xlsx
+// ═══════════════════════════════════════════════════════════════
+const STEPS = [
+  // ── PRE-TRAINING ───────────────────────────────────────────
+  {
+    code:'MSC001', name:'Updation in Academic Calendar',
+    phase:'Pre-Training', when:'T-14', app:'MSMS', resp:'R2', trackable:true,
+    endpoint:'modActivityCalendarNewget',
+    rule:'actName in R2 must match training name from R1',
+    validate(t, ad) {
+      const cal = ad.activityCalendar || [];
+      if (!cal.length) return fail('No activity calendar entries found (R2 returned empty)');
+      // Match: actName contains first significant words of training name
+      const tname = (t.name||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
+      const words = tname.split(' ').filter(w=>w.length>3).slice(0,3);
+      const match = cal.find(a => {
+        const an = (a.actName||'').trim().toLowerCase();
+        return words.some(w => an.includes(w));
+      });
+      if (match) return pass(`Matched: "${(match.actName||'').trim()}" (${match.startDate||'—'}) — status: ${match.status||'—'}`);
+      return fail(`Calendar has ${cal.length} entries but none match training name "${t.name}"`);
+    }
+  },
+  {
+    code:'MSC002', name:'Trainee & Observer Details Verification',
+    phase:'Pre-Training', when:'T-14', app:'MSMS', resp:'R3', trackable:true,
+    endpoint:'modCbcMasterFacilitatorMappingGet?trainingId=',
+    rule:'All 3 staffTypes required: Master-Trainer, Training-Observer, Academic-Observer — each with staffId + staffName',
+    validate(t, ad) {
+      const staff = ad.staffMapping || [];
+      if (!staff.length) return fail('No staff mapped to this training (R3 empty)');
+      const types = staff.map(s=>s.staffType);
+      const hasMT = staff.find(s=>s.staffType==='Master-Trainer'  && s.staffId && s.staffName);
+      const hasTO = staff.find(s=>s.staffType==='Training-Observer' && s.staffId && s.staffName);
+      const hasAO = staff.find(s=>s.staffType==='Academic-Observer' && s.staffId && s.staffName);
+      if (hasMT && hasTO && hasAO)
+        return pass(`MT: ${hasMT.staffName} | TO: ${hasTO.staffName} | AO: ${hasAO.staffName}`);
+      const missing = [!hasMT&&'Master-Trainer',!hasTO&&'Training-Observer',!hasAO&&'Academic-Observer'].filter(Boolean);
+      return fail(`Missing: ${missing.join(', ')} (${staff.length} total staff records found)`);
+    }
+  },
+  {
+    code:'MSC003', name:'Training ID Creation',
+    phase:'Pre-Training', when:'T-14', app:'MSMS', resp:'R1+R2', trackable:true,
+    endpoint:'external-training/all cross-checked with modActivityCalendarNewget',
+    rule:'Training id must exist in R1 AND a matching actName must exist in R2 calendar',
+    validate(t, ad) {
+      // Check 1: came from R1 (external-training API)
+      if (!t._fromAPI) return fail(`Training ID ${t.id} was manually added — not confirmed via external-training API (R1)`);
+      // Check 2: actName in R2 matches training name
+      const cal = ad.activityCalendar || [];
+      if (!cal.length) return fail(`Training ID ${t.id} found in R1 ✓ but no calendar entries in R2 to cross-check actName`);
+      const tname = (t.name||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
+      const words = tname.split(' ').filter(w=>w.length>3).slice(0,3);
+      const match = cal.find(a => {
+        const an = (a.actName||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
+        return words.some(w => an.includes(w));
+      });
+      if (match) return pass(`R1 ✓ ID ${t.id} exists · R2 ✓ actName matched: "${(match.actName||'').trim()}"`);
+      return fail(`R1 ✓ ID ${t.id} exists in API · R2 ✗ No matching actName in calendar for "${t.name}"`);
+    }
+  },
+  {
+    code:'MSC004', name:'Invitation & TA/DA Form',
+    phase:'Pre-Training', when:'T-14', app:'Training App', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via Training App — not available via MSMS API',
+    validate() { return skip('Tracked via Training App — will be available later'); }
+  },
+  {
+    code:'MSC005', name:'Training Topic Upload (with Schedule)',
+    phase:'Pre-Training', when:'T-14', app:'MSMS', resp:'R4', trackable:true,
+    endpoint:'modCbcTrainingDayBreakGet?trainingId=&scheduleMode=date-wise',
+    rule:'≥1 session record with trainingTopic present',
+    validate(t, ad) {
+      const db = ad.dayBreak || [];
+      if (!db.length) return fail('No training schedule found (R4 empty)');
+      const withTopic = db.filter(d=>d.trainingTopic && d.trainingTopic.trim());
+      if (withTopic.length)
+        return pass(`${db.length} session(s) scheduled. First: "${withTopic[0].trainingTopic.trim()}" on ${withTopic[0].trainingDate||'—'}`);
+      return fail(`${db.length} session record(s) found but no trainingTopic assigned`);
+    }
+  },
+  {
+    code:'MSC006', name:'Trainer Profile Upload & Visibility',
+    phase:'Pre-Training', when:'T-14', app:'MSMS', resp:'R5', trackable:true,
+    endpoint:'modCbcMasterFacilitatorMappingGet?trainingId= (Master-Trainer filter)',
+    rule:'staffType=Master-Trainer must exist with both staffId and staffName',
+    validate(t, ad) {
+      const staff = ad.staffMapping || [];
+      const mt = staff.filter(s=>s.staffType==='Master-Trainer' && s.staffId && s.staffName);
+      if (mt.length)
+        return pass(`${mt.length} Master Trainer(s): ${mt.map(s=>s.staffName).join(', ')}`);
+      if (staff.length)
+        return fail(`${staff.length} staff records found but no Master-Trainer with staffId + staffName`);
+      return fail('No staff records found for this training');
+    }
+  },
+  {
+    code:'MSC007', name:'Taxonomy ID',
+    phase:'Pre-Training', when:'T-14', app:'Training App', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via Training App — not available via MSMS API',
+    validate() { return skip('Tracked via Training App — will be available later'); }
+  },
+  {
+    code:'MSC008', name:'Pre & Post Test Question Submission',
+    phase:'Pre-Training', when:'T-7', app:'MSMS', resp:'R6', trackable:true,
+    endpoint:'examsQuestSetget?qall=all',
+    rule:'≥1 question set with questions=uploaded AND isactive=1',
+    validate(t, ad) {
+      const qb = ad.questionBank || [];
+      if (!qb.length) return fail('No question sets found in question bank (R6 empty)');
+      const active = qb.filter(q=>q.isactive===1 && q.questions==='uploaded');
+      if (active.length)
+        return pass(`${active.length} active question set(s) with uploaded questions (${qb.length} total in bank)`);
+      const hasActive = qb.filter(q=>q.isactive===1);
+      return fail(`${qb.length} question sets found, ${hasActive.length} active, but none have questions=uploaded`);
+    }
+  },
+  {
+    code:'MSC009', name:'Pre-Work Upload (MSMS)',
+    phase:'Pre-Training', when:'T-7', app:'MSMS', resp:'R7', trackable:true,
+    endpoint:'modCbcTrainingGet?trainingId=&type=Pre-work&mediaType=',
+    rule:'≥1 record with type=Pre-work and mediaUrl present',
+    validate(t, ad) {
+      const pw = ad.preWork || [];
+      if (!pw.length) return fail('No pre-work found for this training (R7 empty)');
+      const withMedia = pw.filter(p=>p.mediaUrl && p.mediaUrl.trim());
+      if (withMedia.length)
+        return pass(`${pw.length} pre-work item(s). Latest: "${(pw[0].title||pw[0].description||'').substring(0,50)}" (${pw[0].mediaType||'—'})`);
+      return fail(`${pw.length} pre-work entries found but no mediaUrl attached`);
+    }
+  },
+  {
+    code:'MSC010', name:'Feedback Form Mapping',
+    phase:'Pre-Training', when:'T-7', app:'MSMS', resp:'R8', trackable:true,
+    endpoint:'modCbcFeedbackTemplateMappingGet?trainingId=',
+    rule:'templateIds 6, 14, 16, 17 must ALL be present',
+    validate(t, ad) {
+      const fb = ad.feedbackMapping || [];
+      if (!fb.length) return fail('No feedback templates mapped to this training (R8 empty)');
+      const required = [6, 14, 16, 17];
+      const found = new Set(fb.map(f=>f.templateId));
+      const missing = required.filter(id=>!found.has(id));
+      const present = required.filter(id=>found.has(id));
+      if (!missing.length)
+        return pass(`All 4 required templates present (IDs: 6, 14, 16, 17). Total mappings: ${fb.length}`);
+      return fail(`Missing template IDs: [${missing.join(', ')}] — Present: [${present.join(', ')}] out of 4 required (${fb.length} total mappings)`);
+    }
+  },
+  // ── DURING TRAINING ────────────────────────────────────────
+  {
+    code:'MSC011', name:'Pre-Test',
+    phase:'During Training', when:'T', app:'LMS', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via LMS — will be available in future phase',
+    validate() { return skip('Tracked via LMS — will be available later'); }
+  },
+  {
+    code:'MSC012', name:'Post-Test',
+    phase:'During Training', when:'T', app:'LMS', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via LMS — will be available in future phase',
+    validate() { return skip('Tracked via LMS — will be available later'); }
+  },
+  {
+    code:'MSC013', name:'Feedback Completion',
+    phase:'During Training', when:'T', app:'LMS', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via LMS — will be available in future phase',
+    validate() { return skip('Tracked via LMS — will be available later'); }
+  },
+  // ── POST-TRAINING ──────────────────────────────────────────
+  {
+    code:'MSC014', name:'LMS Video Update',
+    phase:'Post-Training', when:'T', app:'N/A', resp:'—', trackable:false,
+    endpoint:'—', rule:'Not Applicable for In-Person training',
+    validate() { return skip('Not Applicable — In-Person training'); }
+  },
+  {
+    code:'MSC015', name:'Upload Photos',
+    phase:'Post-Training', when:'T+2', app:'MSMS', resp:'R9', trackable:true,
+    endpoint:'modCbcTrainingImagesGet?trainingId=',
+    rule:'≥1 photo with imgUrl present',
+    validate(t, ad) {
+      const imgs = ad.photos || [];
+      if (!imgs.length) return fail('No photos uploaded for this training (R9 empty)');
+      const withUrl = imgs.filter(i=>i.imgUrl && i.imgUrl.trim());
+      if (withUrl.length) {
+        const byType = {};
+        imgs.forEach(i=>{ byType[i.imgRelatedTo]=(byType[i.imgRelatedTo]||0)+1; });
+        return pass(`${imgs.length} photo(s) uploaded — ${Object.entries(byType).map(([k,v])=>`${k}(${v})`).join(', ')}`);
+      }
+      return fail(`${imgs.length} photo records found but none have imgUrl`);
+    }
+  },
+  {
+    code:'MSC016', name:'Training Materials Upload',
+    phase:'Post-Training', when:'T+2', app:'LMS', resp:'—', trackable:false,
+    endpoint:'—', rule:'Tracked via LMS — will be available in future phase',
+    validate() { return skip('Tracked via LMS — will be available later'); }
+  },
+];
+
+const TRACKABLE = STEPS.filter(s=>s.trackable); // 9 steps
+
+function pass(msg) { return {ok:true,  msg}; }
+function fail(msg) { return {ok:false, msg}; }
+function skip(msg) { return {ok:null,  msg}; }
+
+// ═══════════════════════════════════════════════════════════════
+// API ENDPOINTS
+// ═══════════════════════════════════════════════════════════════
+const LOGIN_URL = 'https://qe5r30ot7h.execute-api.ap-south-1.amazonaws.com/api/login/msmslogin';
+const EP = {
+  allTrainings:    'https://training.masclass.in/api/v1/external-training/all',
+  activityCal:     'https://qkpovsx8ol.execute-api.ap-south-1.amazonaws.com/api/activityexam/modActivityCalendarNewget?userId=&verticalId=&actId=&actInvolvement=&actType=&startDate=&verticalLeadPhNo=&status=&location=&activityGroup=&isactive=1',
+  questionBank:    'https://qkpovsx8ol.execute-api.ap-south-1.amazonaws.com/api/questionbank/examsQuestSetget?qall=all',
+};
+// Per-training endpoints (need trainingId substituted)
+const EPT = {
+  staffMapping:    id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcMasterFacilitatorMappingGet?trainingId=${id}&staffId=&userId=`,
+  dayBreak:        id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcTrainingDayBreakGet?trainingId=${id}&scheduleMode=date-wise`,
+  preWork:         id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcTrainingGet?trainingId=${id}&type=Pre-work&mediaType=`,
+  feedbackMapping: id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcFeedbackTemplateMappingGet?trainingId=${id}&titleId=&templateId=`,
+  photos:          id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcTrainingImagesGet?trainingId=${id}`,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let PROXY = localStorage.getItem('tct_proxy') ?? '';
+let ST = { token:null, user:null, trainings:[], globalData:{}, editingId:null };
+
+function loadST() {
+  try { const s=JSON.parse(localStorage.getItem('tct_v4')||'{}'); ST.trainings=s.trainings||[]; ST.token=s.token||null; ST.user=s.user||null; } catch(e){}
+}
+function saveST() {
+  try { localStorage.setItem('tct_v4', JSON.stringify({trainings:ST.trainings,token:ST.token,user:ST.user})); } catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════
+async function doLogin() {
+  const u = document.getElementById('lUser').value.trim();
+  const r = document.getElementById('lRef').value.trim();
+  if (!u||!r) { toast('Enter username and reference code','e'); return; }
+  document.getElementById('lBtnTxt').innerHTML = '<span class="ld"></span> Signing in...';
+
+  // Try multiple payload formats — the API may use different field names
+  const payloads = [
+    {username:u, ref:r},               // original documented format
+    {username:u, ref:r, option:2},     // with option flag
+    {phoneNo:u,  ref:r},               // phoneNo variant
+    {phone:u,    ref:r},               // phone variant
+    {mobile:u,   ref:r},               // mobile variant
+    {userId:u,   ref:r},               // userId variant
+    {username:u, password:r},          // password variant
+    {username:u, passcode:r},          // passcode variant
+  ];
+
+  let token = null;
+  let lastError = null;
+  let successPayload = null;
+
+  for (const payload of payloads) {
+    try {
+      const res = await fetch(`${PROXY}/proxy?target=${enc(LOGIN_URL)}`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      const raw = JSON.stringify(data);
+
+      // Check for error indicators
+      if (data.message && data.message.toLowerCase().includes('invalid')) { lastError = data.message; continue; }
+      if (data.error) { lastError = data.error; continue; }
+      if (res.status === 400 || res.status === 401) { lastError = `HTTP ${res.status}`; continue; }
+
+      // Try to extract token
+      const m = raw.match(/"(?:token|accessToken|access_token|authToken|jwt|Authorization)"\s*:\s*"([^"]+)"/i);
+      if (m) { token = m[1]; successPayload = payload; break; }
+
+      // Some APIs return token at top level as a plain string value
+      if (data.token) { token = data.token; successPayload = payload; break; }
+      if (data.accessToken) { token = data.accessToken; successPayload = payload; break; }
+
+      // If response has no error and has some content, treat as success
+      if (res.status === 200 && !data.error && !data.message?.toLowerCase().includes('invalid')) {
+        token = 'SESSION_ACTIVE';
+        successPayload = payload;
+        break;
+      }
+    } catch(e) {
+      lastError = e.message;
+      // If proxy is unreachable, no point trying more payloads
+      if (e.message.includes('fetch') || e.message.includes('network')) break;
+    }
+  }
+
+  if (token) {
+    ST.token = token;
+    ST.user = u;
+    // Remember which payload worked for future calls
+    if (successPayload) localStorage.setItem('tct_login_payload', JSON.stringify(successPayload));
+    saveST();
+    toast('Login successful ✓', 's');
+    try { await launchApp(); } catch(e) { showLoginFallback(); }
+  } else {
+    toast(`Login failed — ${lastError || 'check credentials and proxy'}`, 'e');
+    document.getElementById('lBtnTxt').textContent = 'Sign In';
+  }
+  document.getElementById('lBtnTxt').textContent = 'Sign In';
+}
+
+function showLoginFallback() {
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  ST.token = null; saveST();
+  toast('Failed to load app — please sign in again', 'e');
+}
+
+async function launchApp() {
+  // Show the app immediately — never leave a blank page
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+  // Update user label
+  const ul = document.getElementById('userLabel');
+  if (ul && ST.user) ul.textContent = ST.user;
+  // Render steps table right away (static, no API needed)
+  renderStepsTable();
+  // If we have cached trainings, render them immediately while sync runs
+  if (ST.trainings.length) renderAll();
+  // Then sync fresh data in background
+  await syncAll();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════════
+async function apiGet(url) {
+  const hdrs = { 'Content-Type': 'application/json' };
+  if (ST.token && ST.token !== 'SESSION_ACTIVE') {
+    hdrs['Authorization'] = `Bearer ${ST.token}`;
+    hdrs['token']         = ST.token;
+    hdrs['x-auth-token']  = ST.token;
+    // Note: for masclass.in the proxy server injects the correct X-Api-Key itself
+    // (it's a fixed secret, not derived from login) — see server.js. Sending the
+    // session token here as a fallback is harmless since the server overwrites it.
+    hdrs['X-API-Key'] = ST.token;
+  }
+  const shortUrl = url.split('?')[0].split('/').slice(-2).join('/');
+  console.log(`[TCT] GET ${shortUrl} | X-API-Key: ${hdrs['X-API-Key']?.substring(0,20)||'none'}...`);
+  const res = await fetch(`${PROXY}/proxy?target=${enc(url)}`, { headers: hdrs });
+  console.log(`[TCT] → HTTP ${res.status} for ${shortUrl}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+async function safe(url) { try { return await apiGet(url); } catch { return null; } }
+function enc(u) { return encodeURIComponent(u); }
+function toArr(v) {
+  if (!v) return [];
+  // Direct array
+  if (Array.isArray(v)) return v;
+  // AWS API Gateway pattern: { statusCode, body: "..." } where body is a JSON string
+  if (v.statusCode !== undefined && v.body !== undefined) {
+    try {
+      const parsed = typeof v.body === 'string' ? JSON.parse(v.body) : v.body;
+      return toArr(parsed); // recurse — body itself might be wrapped
+    } catch { return []; }
+  }
+  // Common wrapper keys
+  for (const k of ['data','result','response','records','list','items','trainings','training','externalTraining']) {
+    if (v[k] !== undefined) {
+      if (Array.isArray(v[k])) return v[k];
+      if (typeof v[k] === 'string') {
+        try { const p = JSON.parse(v[k]); if (Array.isArray(p)) return p; } catch {}
+      }
+    }
+  }
+  // Single object (not an error wrapper)
+  if (typeof v === 'object' && !v.error && !v.message?.toLowerCase().includes('error')) return [v];
+  return [];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SYNC — load all trainings from API then per-training details
+// ═══════════════════════════════════════════════════════════════
+async function syncAll() {
+  showLoad('Connecting to APIs...');
+  const sl = document.getElementById('syncLd'); if (sl) sl.style.display = 'inline-block';
+  // Confirm token state before making any calls
+  console.log('[TCT] syncAll — token:', ST.token ? ST.token.substring(0,30)+'...' : 'MISSING');
+  try {
+    // 1. Global data (fetched once for all trainings)
+    updateLoad('Fetching trainings + global data...');
+    const [trainRes, calRes, qbRes] = await Promise.allSettled([
+      safe(EP.allTrainings),
+      safe(EP.activityCal),
+      safe(EP.questionBank),
+    ]);
+
+    ST.globalData = {
+      activityCalendar: toArr(calRes.value),
+      questionBank:     toArr(qbRes.value),
+    };
+
+    // 2. Build training list from R1
+    const rawList = toArr(trainRes.value);
+    // Debug log — visible in browser console (F12 → Console)
+    console.log('[TCT] R1 raw:', JSON.stringify(trainRes.value)?.substring(0,400));
+    console.log('[TCT] R1 parsed:', rawList.length, 'records | keys:', rawList[0] ? Object.keys(rawList[0]).join(', ') : 'none');
+    if (rawList[0]) console.log('[TCT] R1 first record:', JSON.stringify(rawList[0]));
+    const localMap = {};
+    (ST.trainings||[]).forEach(t=>{ localMap[String(t.id)]=t; });
+
+    if (rawList.length > 0) {
+      ST.trainings = rawList.map(r => {
+        const id = String(r.id||'');
+        const ex = localMap[id]||{};
+        return {
+          id,
+          name:        (r.name||r.trainingName||ex.name||'—').trim(),
+          type:        r.type||r.trainingType||ex.type||'Academic',
+          startDate:   nd(r.t_start||r.startDate||r.start_date||ex.startDate),
+          endDate:     nd(r.t_end||r.endDate||r.end_date||ex.endDate),
+          status:      r.completion_status||r.status||ex.status||'pending',
+          trainees:    +(r.trainees||r.traineeCount||ex.trainees||0),
+          participants:+(r.participants||r.participantCount||ex.participants||0),
+          locations:   r.locations||r.location||ex.locations||'—',
+          notes:       r.detail||r.remarks||ex.notes||'',
+          apiDetails:  ex.apiDetails||{},
+          stepResults: ex.stepResults||{},
+          lastSynced:  null,
+          _fromAPI:    true,
+          _raw:        r,
+        };
+      });
+      // Merge in any manually added trainings not in API
+      Object.values(localMap).forEach(lt=>{
+        if (!ST.trainings.find(t=>t.id===lt.id)) ST.trainings.push(lt);
+      });
+    }
+
+    if (!ST.trainings.length) {
+      toast('No trainings returned from API — proxy may be unreachable or API returned empty', 'e');
+      hideLoad(); if(sl) sl.style.display='none'; renderAll(); return;
+    }
+
+    // 3. Per-training detail calls
+    for (let i=0; i<ST.trainings.length; i++) {
+      const t = ST.trainings[i];
+      updateLoad(`Syncing ${t.id} (${i+1}/${ST.trainings.length}): ${t.name.substring(0,28)}...`);
+
+      const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
+        safe(EPT.staffMapping(t.id)),
+        safe(EPT.dayBreak(t.id)),
+        safe(EPT.preWork(t.id)),
+        safe(EPT.feedbackMapping(t.id)),
+        safe(EPT.photos(t.id)),
+      ]);
+
+      // Build apiDetails — the grouped raw data shown in detail view
+      t.apiDetails = {
+        staffMapping:    toArr(sfRes.value),
+        dayBreak:        toArr(dbRes.value),
+        preWork:         toArr(pwRes.value),
+        feedbackMapping: toArr(fbRes.value),
+        photos:          toArr(imgRes.value),
+        // Global data injected per-training for validators
+        activityCalendar: ST.globalData.activityCalendar,
+        questionBank:     ST.globalData.questionBank,
+      };
+
+      // Run all 9 trackable validations
+      t.stepResults = {};
+      for (const step of TRACKABLE) {
+        try { t.stepResults[step.code] = step.validate(t, t.apiDetails); }
+        catch(e) { t.stepResults[step.code] = fail(`Validator error: ${e.message}`); }
+      }
+      t.lastSynced = new Date().toISOString();
+    }
+
+    saveST();
+    renderAll();
+    toast(`Loaded ${ST.trainings.length} trainings ✓`, 's');
+  } catch(e) {
+    console.error(e);
+    toast('Sync failed — '+e.message, 'e');
+    renderAll();
+  } finally {
+    hideLoad();
+    if (sl) sl.style.display='none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMPLIANCE CALC
+// ═══════════════════════════════════════════════════════════════
+function calc(t) {
+  const res = t.stepResults||{};
+  let passed=0, failed=0;
+  TRACKABLE.forEach(s=>{
+    const r=res[s.code];
+    if (r&&r.ok===true) passed++;
+    else if (!r||r.ok===false) failed++;
+  });
+  const total=TRACKABLE.length;
+  const pct=Math.round(passed/total*100);
+  const risk=pct>=70?'LOW':pct>=55?'MEDIUM':'HIGH';
+  return {passed,failed,total,pct,risk};
+}
+
+function barColor(risk) {
+  return risk==='HIGH'?'var(--rd)':risk==='MEDIUM'?'var(--wn)':'var(--gn)';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER ALL
+// ═══════════════════════════════════════════════════════════════
+function renderAll() {
+  renderDashboard();
+  renderTrainings();
+  renderCompliance();
+  renderDeviations();
+  const synced = ST.trainings.filter(t=>t.lastSynced).length;
+  const sub = document.getElementById('dashSub');
+  if (sub) sub.textContent = `${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} · ${ST.trainings.length} trainings · ${synced} synced`;
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+function renderDashboard() {
+  const data=ST.trainings.map(t=>({t,c:calc(t)}));
+  const n=data.length;
+  const avg=n?Math.round(data.reduce((a,d)=>a+d.c.pct,0)/n):0;
+  const compliant=data.filter(d=>d.c.pct===100).length;
+  const atRisk=data.filter(d=>d.c.risk==='HIGH').length;
+  const withDev=data.filter(d=>d.c.failed>0).length;
+  const totalParts=data.reduce((a,d)=>a+(d.t.participants||0),0);
+  const totalExp=data.reduce((a,d)=>a+(d.t.trainees||0),0);
+
+  set('dTotal',n); set('dParts',totalParts+(totalExp?'/'+totalExp:''));
+  set('dPartsPct',totalExp?Math.round(totalParts/totalExp*100)+'%':'');
+  set('dAvg',avg+'%'); set('dCompliant',compliant);
+  set('sTotal',n); set('sAvg',avg+'%'); set('sRisk',atRisk); set('sDev',withDev);
+  document.getElementById('riskBadge').textContent=`${atRisk} AT RISK`;
+
+  const ca=document.getElementById('critAlert');
+  if (avg<55&&atRisk>0) { ca.style.display='flex'; set('critMsg',`Avg compliance LOW at ${avg}%. Escalation required for ${atRisk} at-risk trainings.`); }
+  else ca.style.display='none';
+
+  const sorted=[...data].sort((a,b)=>a.c.pct-b.c.pct).slice(0,12);
+  document.getElementById('dashBody').innerHTML=sorted.length
+    ?sorted.map(({t,c})=>buildRow(t,c,false)).join('')
+    :'<tr><td colspan="9" class="empty">No trainings — click Sync</td></tr>';
+}
+
+// ── TRAININGS TABLE ────────────────────────────────────────────
+function renderTrainings(list) {
+  list=list||ST.trainings;
+  document.getElementById('trainBody').innerHTML=list.length
+    ?list.map(t=>buildRow(t,calc(t),true)).join('')
+    :'<tr><td colspan="11" class="empty">No trainings found</td></tr>';
+}
+
+function buildRow(t,c,full) {
+  const bc=barColor(c.risk);
+  const fails=TRACKABLE.filter(s=>{const r=t.stepResults?.[s.code];return r&&r.ok===false;});
+  const failHtml=fails.length
+    ?fails.slice(0,3).map(s=>`<span class="chip chrd" style="font-size:.58rem;">${s.code}</span>`).join(' ')+(fails.length>3?`<span style="font-size:.65rem;color:var(--t3);">+${fails.length-3}</span>`:'')
+    :'<span class="chip chgn" style="font-size:.58rem;">None</span>';
+  const stCol=t.status==='completed'?'var(--gn)':t.status==='inprogress'?'var(--wn)':'var(--t3)';
+  return `<tr>
+    <td><span class="tid">${t.id}</span></td>
+    <td style="font-size:.79rem;font-weight:500;max-width:200px;">${t.name}</td>
+    <td><span class="chip ${t.type?.includes('Non')?'chpu':'chac'}" style="font-size:.6rem;">${t.type||'—'}</span></td>
+    ${full?`<td style="font-size:.72rem;color:${stCol};">${t.status||'—'}</td>`:''}
+    <td style="font-size:.73rem;color:var(--t2);white-space:nowrap;">${fd(t.startDate,t.endDate)}</td>
+    ${full?`<td style="font-size:.76rem;">${t.trainees||'—'}</td>`:''}
+    <td style="font-size:.76rem;">${t.participants||'—'}</td>
+    <td>
+      <div class="cbar"><div class="btrk"><div class="bfil" style="width:${c.pct}%;background:${bc};"></div></div>
+      <span class="pct" style="color:${bc};">${c.pct}%</span></div>
+      <div style="font-size:.63rem;color:var(--t3);">${c.passed}/${c.total} steps</div>
+    </td>
+    <td>${failHtml}</td>
+    <td><span class="rp rp${c.risk.toLowerCase()[0]}">${c.risk}</span></td>
+    <td><div style="display:flex;gap:3px;">
+      <button class="btn bts sm ic" onclick="viewDetail('${t.id}')">👁</button>
+      <button class="btn bts sm ic" onclick="openEdit('${t.id}')">✏️</button>
+      <button class="btn btd sm ic" onclick="delT('${t.id}')">🗑</button>
+    </div></td>
+  </tr>`;
+}
+
+// ── DETAIL VIEW — two tabs: Steps + grouped API data ──────────
+function viewDetail(id) {
+  const t=ST.trainings.find(x=>x.id===id); if(!t) return;
+  const c=calc(t);
+  const bc=barColor(c.risk);
+  const ad=t.apiDetails||{};
+  document.getElementById('detailTitle').textContent=`${t.id} — ${t.name}`;
+
+  // ── Steps tab ──
+  function stepRow(s) {
+    const r=t.stepResults?.[s.code]||{};
+    const icon= !s.trackable?'🔵':r.ok===true?'✅':r.ok===false?'❌':'⏭️';
+    const cls = !s.trackable?'skip':r.ok===true?'pass':r.ok===false?'fail':'skip';
+    const msgCls=r.ok===true?'msg-ok':r.ok===false?'msg-fail':'msg-skip';
+    const phBadge=s.phase.includes('Pre')?'ph-pre':s.phase.includes('During')?'ph-dur':'ph-post';
+    return `<div class="step-row ${cls}">
+      <div class="step-icon">${icon}</div>
+      <div class="step-body">
+        <div class="step-title">
+          <span class="step-code">${s.code}</span>
+          ${s.name}
+          <span class="chip chgr" style="font-size:.58rem;">${s.when}</span>
+          <span class="chip ${s.app==='MSMS'?'chac':s.app==='LMS'?'chpu':'chgr'}" style="font-size:.58rem;">${s.app}</span>
+        </div>
+        <div class="step-meta">${s.rule}</div>
+        ${r.msg?`<span class="step-msg ${msgCls}">${r.msg}</span>`:''}
+      </div>
+    </div>`;
+  }
+
+  const phaseSteps=(ph)=>STEPS.filter(s=>s.phase===ph);
+  const phClass=ph=>ph.includes('Pre')?'ph-pre':ph.includes('During')?'ph-dur':'ph-post';
+  const phLabel=ph=>ph.includes('Pre')?'Pre-Training':ph.includes('During')?'During Training':'Post-Training';
+
+  const stepsHtml=['Pre-Training','During Training','Post-Training'].map(ph=>`
+    <div class="phase-block">
+      <div class="phase-hdr">
+        <span class="phase-badge ${phClass(ph)}">${phLabel(ph)}</span>
+        <span class="phase-lbl">${phaseSteps(ph).length} steps · ${phaseSteps(ph).filter(s=>s.trackable).length} tracked</span>
+      </div>
+      ${phaseSteps(ph).map(stepRow).join('')}
+    </div>`).join('');
+
+  // ── Data tab — each API response grouped separately ──
+  function diCell(label,val) {
+    return val!==undefined&&val!==null&&val!==''?`<div class="di"><div class="dikey">${label}</div><div class="dival">${val}</div></div>`:'';
+  }
+  function sectionHdr(title,ep,count,hasData) {
+    return `<div class="ds-hdr">${title} <span class="ds-ep">(${ep})</span>
+      <span class="ds-count ${hasData?'cnt-ok':'cnt-no'}">${count} record${count!==1?'s':''}</span>
+    </div>`;
+  }
+
+  // R1 — Training info
+  const r1Html=`<div class="data-section">
+    ${sectionHdr('R1 — Training Info','external-training/all',1,true)}
+    <div class="dgrid2">
+      ${diCell('Training ID',t.id)}${diCell('Name',t.name)}${diCell('Type',t.type)}
+      ${diCell('Status',t.status)}${diCell('Start',t.startDate)}${diCell('End',t.endDate)}
+      ${diCell('Trainees',t.trainees)}${diCell('Participants',t.participants)}
+      ${diCell('Locations',t.locations)}${diCell('Notes',t.notes)}
+    </div>
+  </div>`;
+
+  // R2 — Activity Calendar (global)
+  const cal=ad.activityCalendar||[];
+  const calMatch=cal.filter(a=>{
+    const tname=(t.name||'').toLowerCase();
+    const words=tname.split(' ').filter(w=>w.length>3).slice(0,3);
+    return words.some(w=>(a.actName||'').toLowerCase().includes(w));
+  });
+  const r2Html=`<div class="data-section">
+    ${sectionHdr('R2 — Activity Calendar','modActivityCalendarNewget',calMatch.length,calMatch.length>0)}
+    ${calMatch.length?calMatch.slice(0,3).map(a=>`<div class="dgrid2">
+      ${diCell('actName',(a.actName||'').trim())}${diCell('actVertical',a.actVertical)}
+      ${diCell('startDate',a.startDate)}${diCell('endDate',a.endDate)}
+      ${diCell('status',a.status)}${diCell('location',a.location)}
+    </div>`).join(''):`<div class="empty-row">No matching calendar entries found for this training</div>`}
+    <div style="font-size:.66rem;color:var(--t3);margin-top:4px;">${cal.length} total calendar entries loaded globally</div>
+  </div>`;
+
+  // R3/R5 — Staff Mapping
+  const staff=ad.staffMapping||[];
+  const r3Html=`<div class="data-section">
+    ${sectionHdr('R3/R5 — Staff Mapping (Trainer + Observers)','modCbcMasterFacilitatorMappingGet?trainingId=',staff.length,staff.length>0)}
+    ${staff.length?`<table style="font-size:.73rem;"><thead><tr><th>StaffType</th><th>Name</th><th>Staff ID</th><th>Phone</th><th>Mapped By</th><th>Date</th></tr></thead>
+    <tbody>${staff.map(s=>`<tr>
+      <td><span class="chip ${s.staffType==='Master-Trainer'?'chgn':s.staffType==='Training-Observer'?'chwn':'chpu'}" style="font-size:.6rem;">${s.staffType}</span></td>
+      <td>${s.staffName||'—'}</td><td class="tid">${s.staffId||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:.68rem;">${s.staffPhno||'—'}</td>
+      <td>${s.userName||'—'}</td><td>${s.trainingDate||s.updationTs?.split(' ')[0]||'—'}</td>
+    </tr>`).join('')}</tbody></table>`
+    :`<div class="empty-row">No staff records found — MSC002 and MSC006 will fail</div>`}
+    <div class="dgrid2" style="margin-top:8px;">
+      ${['Master-Trainer','Training-Observer','Academic-Observer'].map(type=>{
+        const found=staff.find(s=>s.staffType===type&&s.staffId&&s.staffName);
+        return `<div class="di"><div class="dikey">${type}</div>
+          <div class="dival" style="color:${found?'var(--gn)':'var(--rd)'};">${found?`✅ ${found.staffName}`:'❌ Not assigned'}</div></div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  // R4 — Day Break / Schedule
+  const db=ad.dayBreak||[];
+  const r4Html=`<div class="data-section">
+    ${sectionHdr('R4 — Training Schedule','modCbcTrainingDayBreakGet?trainingId=&scheduleMode=date-wise',db.length,db.length>0)}
+    ${db.length?`<table style="font-size:.73rem;"><thead><tr><th>Date</th><th>Time</th><th>Topic</th><th>Description</th><th>Assigned Trainer</th></tr></thead>
+    <tbody>${db.map(d=>`<tr>
+      <td style="white-space:nowrap;">${d.trainingDate||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:.68rem;">${d.startTime||''}–${d.endTime||''}</td>
+      <td style="max-width:200px;">${d.trainingTopic||'—'}</td>
+      <td style="font-size:.68rem;color:var(--t2);">${d.trainingDesc||'—'}</td>
+      <td>${d.assignedStaff||'—'}</td>
+    </tr>`).join('')}</tbody></table>`
+    :`<div class="empty-row">No schedule found — MSC005 will fail</div>`}
+  </div>`;
+
+  // R6 — Question Bank (global)
+  const qb=ad.questionBank||[];
+  const qbActive=qb.filter(q=>q.isactive===1&&q.questions==='uploaded');
+  const r6Html=`<div class="data-section">
+    ${sectionHdr('R6 — Question Bank','examsQuestSetget?qall=all',qb.length,qb.length>0)}
+    <div class="dgrid2">
+      ${diCell('Total sets in bank',qb.length)}
+      ${diCell('Active with questions uploaded',qbActive.length)}
+      ${diCell('MSC008 status',qbActive.length>0?'✅ Pass':'❌ Fail')}
+    </div>
+    ${qbActive.length?`<table style="font-size:.72rem;margin-top:8px;"><thead><tr><th>Set ID</th><th>Description</th><th>Type</th><th>Class</th><th>Exam Date</th><th>Owner</th></tr></thead>
+    <tbody>${qbActive.slice(0,5).map(q=>`<tr>
+      <td class="tid">${q.qsetId}</td><td>${(q.qsetDesc||'').substring(0,40)}</td>
+      <td><span class="chip chac" style="font-size:.58rem;">${(q.type||'').substring(0,20)}</span></td>
+      <td>${q.applicableClass||'—'}</td><td>${q.examDate||'—'}</td><td>${q.testMaker||q.questionOwner||'—'}</td>
+    </tr>`).join('')}${qbActive.length>5?`<tr><td colspan="6" style="color:var(--t3);font-size:.68rem;">...and ${qbActive.length-5} more</td></tr>`:''}</tbody></table>`:''}
+  </div>`;
+
+  // R7 — Pre-Work
+  const pw=ad.preWork||[];
+  const r7Html=`<div class="data-section">
+    ${sectionHdr('R7 — Pre-Work Upload','modCbcTrainingGet?trainingId=&type=Pre-work',pw.length,pw.length>0)}
+    ${pw.length?`<table style="font-size:.73rem;"><thead><tr><th>Title</th><th>Type</th><th>Media</th><th>Due Date</th><th>Uploaded By</th></tr></thead>
+    <tbody>${pw.map(p=>`<tr>
+      <td style="max-width:180px;">${p.title||p.description||'—'}</td>
+      <td><span class="chip chac" style="font-size:.6rem;">${p.type||'Pre-work'}</span></td>
+      <td><span class="chip chgn" style="font-size:.6rem;">${p.mediaType||'—'}</span></td>
+      <td>${p.submissionDate||'—'}</td><td>${p.userName||'—'}</td>
+    </tr>`).join('')}</tbody></table>`
+    :`<div class="empty-row">No pre-work uploaded — MSC009 will fail</div>`}
+  </div>`;
+
+  // R8 — Feedback Mapping
+  const fb=ad.feedbackMapping||[];
+  const REQUIRED_TPLS=[6,14,16,17];
+  const foundIds=new Set(fb.map(f=>f.templateId));
+  const r8Html=`<div class="data-section">
+    ${sectionHdr('R8 — Feedback Template Mapping','modCbcFeedbackTemplateMappingGet?trainingId=',fb.length,fb.length>0)}
+    <div class="tpl-row" style="margin-bottom:10px;">
+      ${REQUIRED_TPLS.map(id=>`<span class="tpl-chip ${foundIds.has(id)?'tpl-ok':'tpl-no'}">ID ${id} ${foundIds.has(id)?'✅':'❌'}</span>`).join('')}
+      <span style="font-size:.68rem;color:var(--t3);margin-left:4px;">(All 4 required for MSC010)</span>
+    </div>
+    ${fb.length?`<table style="font-size:.73rem;"><thead><tr><th>Template ID</th><th>Template Name</th><th>Feedback For</th><th>User Type</th><th>Session Date</th></tr></thead>
+    <tbody>${fb.map(f=>`<tr>
+      <td><span class="chip ${REQUIRED_TPLS.includes(f.templateId)?'chgn':'chgr'}" style="font-size:.65rem;">${f.templateId}</span></td>
+      <td style="font-size:.7rem;">${f.templateName||'—'}</td>
+      <td style="font-size:.68rem;">${f.feedbackFor||'—'}</td>
+      <td><span class="chip ${f.fbUserType==='Trainer'?'chac':f.fbUserType==='Trainee'?'chgn':'chpu'}" style="font-size:.6rem;">${f.fbUserType||'—'}</span></td>
+      <td>${f.trainingDate||'—'}</td>
+    </tr>`).join('')}</tbody></table>`
+    :`<div class="empty-row">No feedback templates mapped — MSC010 will fail</div>`}
+  </div>`;
+
+  // R9 — Photos
+  const imgs=ad.photos||[];
+  const byRole={};
+  imgs.forEach(i=>{ byRole[i.imgRelatedTo]=(byRole[i.imgRelatedTo]||0)+1; });
+  const r9Html=`<div class="data-section">
+    ${sectionHdr('R9 — Uploaded Photos','modCbcTrainingImagesGet?trainingId=',imgs.length,imgs.length>0)}
+    ${imgs.length?`
+    <div class="dgrid2" style="margin-bottom:8px;">
+      ${Object.entries(byRole).map(([role,cnt])=>`<div class="di"><div class="dikey">${role}</div><div class="dival" style="color:var(--gn);">${cnt} photo(s)</div></div>`).join('')}
+    </div>
+    <table style="font-size:.73rem;"><thead><tr><th>Role</th><th>File Name</th><th>Date</th><th>Uploaded By</th></tr></thead>
+    <tbody>${imgs.slice(0,8).map(img=>`<tr>
+      <td><span class="chip chpu" style="font-size:.6rem;">${img.imgRelatedTo||'—'}</span></td>
+      <td style="font-size:.68rem;">${img.imgName||'—'}</td>
+      <td>${img.imgDate||'—'}</td><td>${img.userName||'—'}</td>
+    </tr>`).join('')}${imgs.length>8?`<tr><td colspan="4" style="color:var(--t3);font-size:.68rem;">...and ${imgs.length-8} more photos</td></tr>`:''}</tbody></table>`
+    :`<div class="empty-row">No photos uploaded — MSC015 will fail</div>`}
+  </div>`;
+
+  document.getElementById('detailBody').innerHTML=`
+    <!-- Summary -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px;">
+      <div style="background:var(--s2);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;">Compliance</div>
+        <div style="font-size:1.4rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:${bc};">${c.pct}%</div>
+      </div>
+      <div style="background:var(--s2);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;">Steps Passed</div>
+        <div style="font-size:1.4rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--gn);">${c.passed}/${c.total}</div>
+      </div>
+      <div style="background:var(--s2);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;">Participants</div>
+        <div style="font-size:1.4rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--ac);">${t.participants||0}</div>
+      </div>
+      <div style="background:var(--s2);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;">Risk</div>
+        <div style="margin-top:6px;"><span class="rp rp${c.risk.toLowerCase()[0]}">${c.risk}</span></div>
+      </div>
+    </div>
+    <!-- Tabs -->
+    <div class="tabbar" id="dtabs">
+      <div class="tab active" onclick="dtab('steps',this)">✅ Step Validation (${c.passed}/${c.total} passed)</div>
+      <div class="tab" onclick="dtab('data',this)">🔌 API Data (R1–R9)</div>
+    </div>
+    <div id="dtab-steps">${stepsHtml}</div>
+    <div id="dtab-data" style="display:none;">${r1Html}${r2Html}${r3Html}${r4Html}${r6Html}${r7Html}${r8Html}${r9Html}</div>
+  `;
+  openMo('detailMo');
+
+  // Last synced + re-sync button
+  const syncEl = document.getElementById('detailSyncTime');
+  if (syncEl) syncEl.textContent = t.lastSynced
+    ? `Last synced: ${new Date(t.lastSynced).toLocaleString('en-IN')}`
+    : 'Not yet synced';
+  const resyncBtn = document.getElementById('detailResyncBtn');
+  if (resyncBtn) {
+    resyncBtn.onclick = async () => {
+      resyncBtn.innerHTML='<span class="ld"></span> Syncing...';
+      resyncBtn.disabled=true;
+      await syncSingleTraining(t.id);
+      resyncBtn.innerHTML='🔄 Re-sync';
+      resyncBtn.disabled=false;
+      // Refresh the detail view in place
+      viewDetail(t.id);
+    };
+  }
+}
+
+function dtab(tab,el) {
+  document.querySelectorAll('#dtabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('dtab-steps').style.display=tab==='steps'?'block':'none';
+  document.getElementById('dtab-data').style.display=tab==='data'?'block':'none';
+}
+
+// ── COMPLIANCE PAGE ────────────────────────────────────────────
+function renderCompliance() {
+  if (!ST.trainings.length) {
+    document.getElementById('compList').innerHTML='<div class="empty">No trainings loaded — click 🔄 Sync to fetch from API</div>';
+    return;
+  }
+  const notSynced = ST.trainings.filter(t=>!t.lastSynced);
+  const phClass=ph=>ph.includes('Pre')?'ph-pre':ph.includes('During')?'ph-dur':'ph-post';
+  const banner = notSynced.length
+    ? `<div class="alert" style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);margin-bottom:12px;">
+        <span>⚠️</span><div><strong>${notSynced.length} training(s) not yet synced</strong> — step results may be incomplete. Click 🔄 Sync to fetch all.</div>
+       </div>`
+    : '';
+  const rows = ST.trainings.map(t=>{
+    const c=calc(t);
+    const bc=barColor(c.risk);
+    const phasesHtml=['Pre-Training','During Training','Post-Training'].map(ph=>{
+      const phSteps=STEPS.filter(s=>s.phase===ph);
+      return `<div style="margin-bottom:10px;">
+        <div style="margin-bottom:5px;"><span class="phase-badge ${phClass(ph)}" style="font-size:.6rem;">${ph}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px;">
+        ${phSteps.map(s=>{
+          const r=t.stepResults?.[s.code]||{};
+          const icon=!s.trackable?'🔵':r.ok===true?'✅':r.ok===false?'❌':'⏭️';
+          const cls=!s.trackable?'skip':r.ok===true?'pass':r.ok===false?'fail':'skip';
+          return `<div class="step-row ${cls}" style="cursor:default;">
+            <div class="step-icon" style="font-size:.78rem;">${icon}</div>
+            <div>
+              <div style="font-size:.7rem;font-weight:600;">${s.name}</div>
+              <div style="font-size:.62rem;color:var(--t3);">${s.code} · ${s.app}</div>
+              ${r.msg?`<div style="font-size:.62rem;margin-top:2px;color:${r.ok===true?'var(--gn)':r.ok===false?'var(--rd)':'var(--t3)'};">${r.msg.substring(0,65)}${r.msg.length>65?'…':''}</div>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="tw" style="margin-bottom:12px;">
+      <div class="th" style="flex-wrap:wrap;gap:5px;">
+        <div><span class="tid">${t.id}</span><strong style="margin-left:6px;font-size:.82rem;">${t.name}</strong>
+          <span class="chip ${t.type?.includes('Non')?'chpu':'chac'}" style="margin-left:5px;font-size:.6rem;">${t.type}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="font-size:.72rem;color:var(--t2);">${t.participants||0} participants</span>
+          <div class="cbar"><div class="btrk" style="min-width:55px;"><div class="bfil" style="width:${c.pct}%;background:${bc};"></div></div>
+          <span class="pct" style="color:${bc};">${c.pct}%</span></div>
+          <span class="rp rp${c.risk.toLowerCase()[0]}">${c.risk}</span>
+          <button class="btn bts sm" onclick="viewDetail('${t.id}')">Details →</button>
+        </div>
+      </div>
+      <div style="padding:11px;">${phasesHtml}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('compList').innerHTML = banner + (rows || '<div class="empty">No trainings — click Sync</div>');
+}
+
+// ── DEVIATIONS ─────────────────────────────────────────────────
+function renderDeviations() {
+  const devs=ST.trainings.map(t=>({t,c:calc(t)})).filter(d=>d.c.failed>0);
+  if (!devs.length) {
+    document.getElementById('devList').innerHTML=`<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:26px;text-align:center;">
+      <div style="font-size:2rem;">✅</div><div style="color:var(--gn);font-weight:600;margin-top:6px;">No deviations — all 9 trackable steps passed!</div>
+    </div>`;
+    return;
+  }
+  document.getElementById('devList').innerHTML=devs.map(({t,c})=>{
+    const fails=TRACKABLE.filter(s=>{const r=t.stepResults?.[s.code];return r&&r.ok===false;});
+    const bc=barColor(c.risk);
+    return `<div style="background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:12px 15px;margin-bottom:9px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+        <div>
+          <span class="tid">${t.id}</span>
+          <strong style="margin-left:6px;font-size:.82rem;">${t.name}</strong>
+          <span style="margin-left:6px;font-size:.7rem;color:var(--t2);">${t.type} · ${t.participants||0} participants · ${fd(t.startDate,t.endDate)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${bc};">${c.pct}%</span>
+          <span style="font-size:.7rem;color:var(--t3);">${c.passed}/${c.total} steps</span>
+          <span class="rp rp${c.risk.toLowerCase()[0]}">${c.risk}</span>
+        </div>
+      </div>
+      ${fails.map(s=>{
+        const r=t.stepResults?.[s.code]||{};
+        return `<div style="display:flex;gap:7px;padding:5px 0;border-top:1px solid rgba(31,48,80,.4);">
+          <span style="font-size:.85rem;">❌</span>
+          <div>
+            <span style="font-size:.74rem;font-weight:600;color:var(--rd);">${s.code} — ${s.name}</span>
+            <span style="margin-left:6px;font-size:.66rem;color:var(--t3);">${s.when} · ${s.app}</span>
+            ${r.msg?`<div style="font-size:.68rem;color:var(--t2);margin-top:2px;">${r.msg}</div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+// ── STEPS REFERENCE TABLE ──────────────────────────────────────
+function renderStepsTable() {
+  const phClass=ph=>ph.includes('Pre')?'ph-pre':ph.includes('During')?'ph-dur':'ph-post';
+  document.getElementById('stepsBody').innerHTML=STEPS.map(s=>`<tr>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ac);font-weight:700;">${s.code}</td>
+    <td style="font-size:.79rem;font-weight:500;">${s.name}</td>
+    <td><span class="phase-badge ${phClass(s.phase)}" style="font-size:.62rem;">${s.phase}</span></td>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:.7rem;">${s.when}</td>
+    <td><span class="chip ${s.app==='MSMS'?'chac':s.app==='LMS'?'chpu':'chgr'}" style="font-size:.62rem;">${s.app}</span></td>
+    <td style="font-size:.68rem;color:var(--ac);font-family:'JetBrains Mono',monospace;">${s.resp}</td>
+    <td style="font-size:.68rem;color:var(--t2);max-width:220px;">${s.rule}</td>
+    <td><span class="chip ${s.trackable?'chgn':'chgr'}" style="font-size:.6rem;">${s.trackable?'✅ Tracked Now':'⏭️ Later'}</span></td>
+  </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PDF REPORT
+// ═══════════════════════════════════════════════════════════════
+function genPDF() {
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const now=new Date();
+  const data=ST.trainings.map(t=>({t,c:calc(t)}));
+  const n=data.length,avg=n?Math.round(data.reduce((a,d)=>a+d.c.pct,0)/n):0;
+  const compliant=data.filter(d=>d.c.pct===100).length,atRisk=data.filter(d=>d.c.risk==='HIGH').length;
+
+  // Header
+  doc.setFillColor(10,15,30);doc.rect(0,0,210,38,'F');
+  doc.setTextColor(0,212,255);doc.setFontSize(7);doc.text('TRAINING LEAD REPORT — CONFIDENTIAL',14,10);
+  doc.setTextColor(255,255,255);doc.setFontSize(15);doc.setFont(undefined,'bold');
+  doc.text('Mandatory Workflow Compliance',14,21);
+  doc.setFontSize(8.5);doc.setFont(undefined,'normal');doc.setTextColor(148,163,184);
+  doc.text('Training Compliance Tracker · 16 Steps · 9 Tracked via MSMS API',14,29);
+  doc.setFontSize(7);doc.text(`Generated: ${now.toLocaleDateString('en-IN')} ${now.toLocaleTimeString('en-IN')}`,140,10);
+
+  // Summary boxes
+  let y=45;
+  const boxes=[
+    {l:'TOTAL',v:String(n),c:[0,212,255]},{l:'COMPLIANT',v:String(compliant),c:[16,185,129]},
+    {l:'AVG %',v:avg+'%',c:avg>=70?[16,185,129]:avg>=55?[245,158,11]:[239,68,68]},
+    {l:'AT RISK',v:String(atRisk),c:[239,68,68]},{l:'TRACKED STEPS',v:'9/16',c:[124,58,237]},
+  ];
+  boxes.forEach((b,i)=>{
+    const bx=14+i*37;
+    doc.setDrawColor(...b.c);doc.roundedRect(bx,y,32,14,2,2);
+    doc.setFillColor(...b.c);doc.rect(bx,y,32,1,'F');
+    doc.setTextColor(...b.c);doc.setFontSize(11);doc.setFont(undefined,'bold');
+    doc.text(b.v,bx+16,y+8,{align:'center'});
+    doc.setTextColor(120,120,120);doc.setFontSize(5.5);doc.setFont(undefined,'normal');
+    doc.text(b.l,bx+16,y+12.5,{align:'center'});
+  });
+  y+=20;
+
+  if (avg<55) {
+    doc.setFillColor(254,242,242);doc.setDrawColor(239,68,68);
+    doc.roundedRect(14,y,182,8,2,2,'FD');
+    doc.setTextColor(185,28,28);doc.setFont(undefined,'bold');doc.setFontSize(7.5);
+    doc.text(`🔴 CRITICAL: Avg compliance LOW at ${avg}%. Escalation required for ${atRisk} at-risk trainings.`,18,y+5);
+    y+=13;
+  }
+
+  // Training table
+  doc.setFont(undefined,'bold');doc.setFontSize(9.5);doc.setTextColor(50,50,50);
+  doc.text('Training-wise Compliance Status',14,y);y+=5;
+  doc.autoTable({
+    head:[['ID','Training Name','Type','Status','Dates','Participants','Passed','%','Failed Steps','Risk']],
+    body:data.sort((a,b)=>a.c.pct-b.c.pct).map(({t,c})=>{
+      const fails=TRACKABLE.filter(s=>{const r=t.stepResults?.[s.code];return r&&r.ok===false;});
+      return[t.id,t.name.substring(0,32),t.type?.substring(0,10)||'—',t.status||'—',
+        fd(t.startDate,t.endDate),String(t.participants||0),
+        `${c.passed}/${c.total}`,c.pct+'%',
+        fails.map(s=>s.code).join(', ')||'—',c.risk];
+    }),
+    startY:y,styles:{font:'helvetica',fontSize:6,cellPadding:1.6},
+    headStyles:{fillColor:[17,24,39],textColor:[200,210,220],fontStyle:'bold'},
+    columnStyles:{0:{cellWidth:12,fontStyle:'bold',textColor:[0,150,200]},7:{fontStyle:'bold'},9:{fontStyle:'bold'}},
+    alternateRowStyles:{fillColor:[248,250,252]},margin:{left:14,right:14},
+  });
+
+  // Deviations section
+  let cy=doc.lastAutoTable.finalY+10;
+  if (cy>255){doc.addPage();cy=20;}
+  doc.setFont(undefined,'bold');doc.setFontSize(9.5);doc.setTextColor(50,50,50);
+  doc.text('Deviations — Team Action Required',14,cy);cy+=6;
+  const devData=data.filter(d=>d.c.failed>0);
+  if (!devData.length) {
+    doc.setFillColor(240,253,244);doc.setDrawColor(16,185,129);
+    doc.roundedRect(14,cy,182,8,2,2,'FD');
+    doc.setTextColor(21,128,61);doc.setFont(undefined,'normal');doc.setFontSize(8);
+    doc.text('✅ No deviations found — all 9 trackable steps passed!',18,cy+5); cy+=13;
+  } else {
+    devData.forEach(({t,c})=>{
+      const fails=TRACKABLE.filter(s=>{const r=t.stepResults?.[s.code];return r&&r.ok===false;});
+      if (!fails.length) return;
+      if (cy>262){doc.addPage();cy=20;}
+      const h=8+fails.length*5.5;
+      doc.setFillColor(254,242,242);doc.setDrawColor(239,68,68);
+      doc.roundedRect(14,cy,182,h,2,2,'FD');
+      doc.setTextColor(185,28,28);doc.setFont(undefined,'bold');doc.setFontSize(7.5);
+      doc.text(`${t.id} — ${t.name.substring(0,48)} | ${t.type} | ${t.participants||0} participants | ${c.pct}%`,18,cy+5.5);
+      fails.forEach((s,i)=>{
+        const r=t.stepResults?.[s.code]||{};
+        doc.setTextColor(150,30,30);doc.setFont(undefined,'normal');doc.setFontSize(6.5);
+        doc.text(`• ${s.code} (${s.when}): ${s.name} — ${(r.msg||'').substring(0,68)}`,21,cy+10.5+i*5.5);
+      });
+      cy+=h+4;
+    });
+  }
+
+  // 16 Steps reference
+  if (cy>230){doc.addPage();cy=20;}
+  cy+=4;
+  doc.setFont(undefined,'bold');doc.setFontSize(9.5);doc.setTextColor(50,50,50);
+  doc.text('Mandatory Steps Reference (16 Steps · 9 Tracked Now via MSMS)',14,cy);cy+=5;
+  doc.autoTable({
+    head:[['Code','Step Name','Phase','When','App','Response','Tracked']],
+    body:STEPS.map(s=>[s.code,s.name,s.phase,s.when,s.app,s.resp,s.trackable?'✅ Now':'⏭️ Later']),
+    startY:cy,styles:{font:'helvetica',fontSize:6,cellPadding:1.6},
+    headStyles:{fillColor:[17,24,39],textColor:[200,210,220],fontStyle:'bold'},
+    columnStyles:{0:{cellWidth:15,fontStyle:'bold',textColor:[0,150,200]},1:{cellWidth:58},2:{cellWidth:25},3:{cellWidth:10},4:{cellWidth:15},5:{cellWidth:12},6:{cellWidth:20}},
+    margin:{left:14,right:14},
+  });
+
+  const pages=doc.internal.getNumberOfPages();
+  for (let i=1;i<=pages;i++) {
+    doc.setPage(i);doc.setFontSize(6);doc.setTextColor(160,160,160);
+    doc.text(`Training Compliance Tracker · ${now.toLocaleDateString('en-IN')} · CONFIDENTIAL`,14,291);
+    doc.text('Daily Report must be submitted by Training Team (Maha/Anitha) without fail',14,296);
+    doc.text(`${i}/${pages}`,196,296,{align:'right'});
+  }
+  doc.save(`TCT_Report_${now.toISOString().slice(0,10)}.pdf`);
+  toast('PDF report downloaded!','s');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADD / EDIT / DELETE
+// ═══════════════════════════════════════════════════════════════
+function openAddModal() {
+  ST.editingId=null; document.getElementById('editTitle').textContent='Add Training';
+  ['eId','eName','eTrainees','eParts','eLoc','eNotes'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=''; });
+  document.getElementById('eType').value='Academic';
+  document.getElementById('eStatus').value='pending';
+  document.getElementById('eStart').value='';
+  document.getElementById('eEnd').value='';
+  openMo('editMo');
+}
+function openEdit(id) {
+  const t=ST.trainings.find(x=>x.id===id); if(!t) return;
+  ST.editingId=id; document.getElementById('editTitle').textContent='Edit Training';
+  document.getElementById('eId').value=t.id;
+  document.getElementById('eName').value=t.name||'';
+  document.getElementById('eType').value=t.type||'Academic';
+  document.getElementById('eStatus').value=t.status||'pending';
+  document.getElementById('eStart').value=t.startDate||'';
+  document.getElementById('eEnd').value=t.endDate||'';
+  document.getElementById('eTrainees').value=t.trainees||'';
+  document.getElementById('eParts').value=t.participants||'';
+  document.getElementById('eLoc').value=t.locations||'';
+  document.getElementById('eNotes').value=t.notes||'';
+  openMo('editMo');
+}
+function saveTraining() {
+  const id=document.getElementById('eId').value.trim();
+  if (!id) { toast('Training ID is required','e'); return; }
+  const data={
+    id, name:document.getElementById('eName').value,
+    type:document.getElementById('eType').value, status:document.getElementById('eStatus').value,
+    startDate:document.getElementById('eStart').value, endDate:document.getElementById('eEnd').value,
+    trainees:+document.getElementById('eTrainees').value||0,
+    participants:+document.getElementById('eParts').value||0,
+    locations:document.getElementById('eLoc').value, notes:document.getElementById('eNotes').value,
+    apiDetails:{}, stepResults:{}, lastSynced:null, _fromAPI:false,
+  };
+  if (ST.editingId) {
+    const idx=ST.trainings.findIndex(t=>t.id===ST.editingId);
+    if (idx>=0) {
+      data.apiDetails=ST.trainings[idx].apiDetails||{};
+      data.stepResults=ST.trainings[idx].stepResults||{};
+      data._fromAPI=ST.trainings[idx]._fromAPI||false;
+      ST.trainings[idx]=data;
+    }
+    toast('Updated — syncing details...','s');
+  } else {
+    if (ST.trainings.find(t=>t.id===id)) { toast('ID already exists','e'); return; }
+    ST.trainings.push(data);
+    toast('Added — syncing details...','s');
+  }
+  saveST(); closeMo('editMo'); renderAll();
+  // Auto-fetch per-training details for the new/edited record
+  syncSingleTraining(id);
+}
+
+async function syncSingleTraining(id) {
+  const t = ST.trainings.find(x=>x.id===id);
+  if (!t) return;
+  try {
+    const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
+      safe(EPT.staffMapping(id)),
+      safe(EPT.dayBreak(id)),
+      safe(EPT.preWork(id)),
+      safe(EPT.feedbackMapping(id)),
+      safe(EPT.photos(id)),
+    ]);
+    t.apiDetails = {
+      staffMapping:     toArr(sfRes.value),
+      dayBreak:         toArr(dbRes.value),
+      preWork:          toArr(pwRes.value),
+      feedbackMapping:  toArr(fbRes.value),
+      photos:           toArr(imgRes.value),
+      activityCalendar: ST.globalData.activityCalendar||[],
+      questionBank:     ST.globalData.questionBank||[],
+    };
+    t.stepResults = {};
+    for (const step of TRACKABLE) {
+      try { t.stepResults[step.code] = step.validate(t, t.apiDetails); }
+      catch(e) { t.stepResults[step.code] = fail(`Validator error: ${e.message}`); }
+    }
+    t.lastSynced = new Date().toISOString();
+    saveST(); renderAll();
+    toast(`Sync complete for training ${id}`,'s');
+  } catch(e) {
+    toast(`Detail sync failed for ${id}: ${e.message}`,'e');
+  }
+}
+function delT(id) {
+  if (!confirm(`Delete training ${id}?`)) return;
+  ST.trainings=ST.trainings.filter(t=>t.id!==id);
+  saveST(); renderAll(); toast('Deleted','s');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILTERS
+// ═══════════════════════════════════════════════════════════════
+function applyFilters() {
+  const s=(document.getElementById('srch')?.value||'').toLowerCase();
+  const type=document.getElementById('ftType')?.value||'';
+  const risk=document.getElementById('ftRisk')?.value||'';
+  const status=document.getElementById('ftStatus')?.value||'';
+  let list=ST.trainings;
+  if (s)      list=list.filter(t=>`${t.id} ${t.name}`.toLowerCase().includes(s));
+  if (type)   list=list.filter(t=>(t.type||'').toLowerCase().includes(type.toLowerCase()));
+  if (risk)   list=list.filter(t=>calc(t).risk===risk);
+  if (status) list=list.filter(t=>t.status===status);
+  renderTrainings(list);
+}
+function filterComp(v) {
+  document.querySelectorAll('#compList > div').forEach(el=>{
+    el.style.display=v?(el.textContent.toLowerCase().includes(v.toLowerCase())?'':'none'):'';
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS / PROXY
+// ═══════════════════════════════════════════════════════════════
+function saveLProxy() {
+  const url=document.getElementById('lpInput').value.trim().replace(/\/$/,'');
+  localStorage.setItem('tct_proxy',url); PROXY=url;
+  document.getElementById('lpDisplay').textContent=url||'same-origin';
+  document.getElementById('lpEdit').classList.remove('show');
+  toast('Proxy updated','s');
+}
+function openSettings() {
+  document.getElementById('sProxy').value=PROXY||'';
+  document.getElementById('proxyStatus').innerHTML='';
+  openMo('settingsMo');
+}
+async function testProxy() {
+  const url=(document.getElementById('sProxy').value.trim()||'').replace(/\/$/,'');
+  const el=document.getElementById('proxyStatus');
+  el.innerHTML='<span class="ld"></span> Testing...';
+  try {
+    const r=await fetch(`${url}/health`); const d=await r.json();
+    el.innerHTML=`<span style="color:var(--gn)">✅ Connected: ${d.status||'ok'} — ${d.service||''}</span>`;
+  } catch(e) { el.innerHTML=`<span style="color:var(--rd)">❌ ${e.message}</span>`; }
+}
+function saveProxy() {
+  const url=(document.getElementById('sProxy').value.trim()||'').replace(/\/$/,'');
+  localStorage.setItem('tct_proxy',url);
+  toast((url?'Proxy saved':'Reset to built-in')+' — reloading...','s');
+  setTimeout(()=>location.reload(),700);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API DEBUG
+// ═══════════════════════════════════════════════════════════════
+async function testLoginVariants() {
+  const u = document.getElementById('dbgUser').value.trim() || ST.user || '';
+  const r = document.getElementById('dbgRef').value.trim() || '';
+  if (!u || !r) { toast('Enter username and reference/password first', 'e'); return; }
+
+  const out = document.getElementById('loginVariantOut');
+  out.innerHTML = '<div style="font-size:.78rem;color:var(--t3);"><span class="ld"></span> Testing all payload formats...</div>';
+
+  const variants = [
+    { label:'username + ref',              payload:{username:u, ref:r} },
+    { label:'username + ref + option:2',   payload:{username:u, ref:r, option:2} },
+    { label:'username + ref + option:"2"', payload:{username:u, ref:r, option:'2'} },
+    { label:'phoneNo + ref',               payload:{phoneNo:u, ref:r} },
+    { label:'phone + ref',                 payload:{phone:u, ref:r} },
+    { label:'mobile + ref',                payload:{mobile:u, ref:r} },
+    { label:'userId + ref',                payload:{userId:u, ref:r} },
+    { label:'username + password',         payload:{username:u, password:r} },
+    { label:'username + passcode',         payload:{username:u, passcode:r} },
+    { label:'phoneNo + password',          payload:{phoneNo:u, password:r} },
+  ];
+
+  const results = [];
+  for (const v of variants) {
+    try {
+      const res = await fetch(`${PROXY}/proxy?target=${enc(LOGIN_URL)}`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(v.payload),
+      });
+      const data = await res.json();
+      const raw = JSON.stringify(data);
+      const hasToken = !!(raw.match(/"(?:token|accessToken|access_token|authToken|jwt)"\s*:\s*"([^"]+)"/i) || data.token || data.accessToken);
+      const isInvalid = data.message?.toLowerCase().includes('invalid') || data.error;
+      results.push({ ...v, status:res.status, data, hasToken, isInvalid, raw });
+    } catch(e) {
+      results.push({ ...v, status:'ERR', data:null, hasToken:false, isInvalid:false, raw:e.message });
+    }
+  }
+
+  const found = results.find(r => r.hasToken || (r.status === 200 && !r.isInvalid));
+  if (found) {
+    // Auto-save the working payload format
+    localStorage.setItem('tct_login_payload', JSON.stringify(found.payload));
+    toast(`✅ Working format found: "${found.label}" — saved!`, 's');
+  }
+
+  out.innerHTML = `
+    ${found ? `<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:.8rem;color:var(--gn);">
+      ✅ <strong>Working format: ${found.label}</strong><br>
+      Payload: <code style="font-family:'JetBrains Mono',monospace;font-size:.72rem;">${JSON.stringify(found.payload)}</code>
+    </div>` : `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:.8rem;color:var(--rd);">
+      ❌ No working format found — check credentials or proxy connection
+    </div>`}
+    <table style="font-size:.74rem;width:100%;">
+      <thead><tr><th>Payload Format</th><th>HTTP</th><th>Token?</th><th>Response</th></tr></thead>
+      <tbody>
+        ${results.map(r => `<tr style="border-bottom:1px solid rgba(31,48,80,.4);">
+          <td style="padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:.68rem;">${r.label}</td>
+          <td style="padding:6px 8px;"><span class="chip ${r.status===200?'chgn':r.status===400?'chrd':'chgr'}">${r.status}</span></td>
+          <td style="padding:6px 8px;">${r.hasToken ? '<span style="color:var(--gn);">✅ Yes</span>' : '<span style="color:var(--rd);">❌ No</span>'}</td>
+          <td style="padding:6px 8px;font-size:.68rem;color:var(--t2);max-width:200px;word-break:break-all;">${r.raw.substring(0,80)}${r.raw.length>80?'…':''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function runDebug() {
+  const out = document.getElementById('debugOut');
+  const tokenOk = ST.token && ST.token !== 'SESSION_ACTIVE';
+  const tokenBanner = `<div style="padding:9px 13px;border-radius:7px;margin-bottom:12px;font-size:.78rem;border:1px solid;${tokenOk ? 'background:rgba(16,185,129,.06);border-color:rgba(16,185,129,.25);color:var(--gn);' : 'background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.25);color:var(--rd);'}">
+    ${tokenOk ? `✅ Authenticated — token: ${ST.token.substring(0,28)}...` : '❌ No auth token — log in first, then test endpoints'}
+  </div>`;
+  out.innerHTML = tokenBanner + '<div class="empty"><span class="ld"></span> Testing all endpoints...</div>';
+
+  // Pick a sample training ID if we have any
+  const sampleId = ST.trainings[0]?.id || '643';
+
+  const endpoints = [
+    { label:'LOGIN', url: LOGIN_URL, method:'POST',
+      body:{username: document.getElementById('lUser')?.value||ST.user||'', ref: document.getElementById('lRef')?.value||''},
+      note:'Auth — tries multiple payload formats automatically' },
+    { label:'R1 — All Trainings', url: EP.allTrainings, note:'external-training/all — main training list' },
+    { label:'R2 — Activity Calendar', url: EP.activityCal, note:'MSC001 validation source' },
+    { label:'R6 — Question Bank', url: EP.questionBank, note:'MSC008 validation source' },
+    { label:`R3/R5 — Staff Mapping (ID:${sampleId})`, url: EPT.staffMapping(sampleId), note:'MSC002 + MSC006' },
+    { label:`R4 — Day Break / Schedule (ID:${sampleId})`, url: EPT.dayBreak(sampleId), note:'MSC005' },
+    { label:`R7 — Pre-Work (ID:${sampleId})`, url: EPT.preWork(sampleId), note:'MSC009' },
+    { label:`R8 — Feedback Mapping (ID:${sampleId})`, url: EPT.feedbackMapping(sampleId), note:'MSC010' },
+    { label:`R9 — Photos (ID:${sampleId})`, url: EPT.photos(sampleId), note:'MSC015' },
+  ];
+
+  const results = [];
+  for (const ep of endpoints) {
+    const start = Date.now();
+    let raw = null, parsed = null, err = null, status = null;
+    try {
+      const hdrs = { 'Content-Type': 'application/json' };
+      if (ST.token && ST.token !== 'SESSION_ACTIVE') {
+        hdrs['Authorization'] = `Bearer ${ST.token}`;
+        hdrs['token']         = ST.token;
+        hdrs['x-auth-token']  = ST.token;
+        hdrs['X-API-Key']     = ST.token; // server overwrites this for masclass.in with the real key
+      }
+      const fetchUrl = ep.label==='LOGIN'
+        ? `${PROXY}/proxy?target=${enc(ep.url)}`
+        : `${PROXY}/proxy?target=${enc(ep.url)}`;
+      const res = await fetch(fetchUrl, {
+        method: ep.method||'GET',
+        headers: hdrs,
+        body: ep.body ? JSON.stringify(ep.body) : null,
+      });
+      status = res.status;
+      raw = await res.json();
+      parsed = toArr(raw);
+    } catch(e) {
+      err = e.message;
+    }
+    const ms = Date.now() - start;
+    results.push({ ...ep, raw, parsed, err, status, ms });
+  }
+
+  out.innerHTML = results.map(r => {
+    const ok = !r.err && r.status === 200;
+    const hasData = r.parsed && r.parsed.length > 0;
+    const statusColor = ok && hasData ? 'var(--gn)' : ok ? 'var(--wn)' : 'var(--rd)';
+    const icon = r.err ? '❌' : hasData ? '✅' : '⚠️';
+    const rawStr = r.raw ? JSON.stringify(r.raw, null, 2) : r.err;
+    const preview = rawStr ? rawStr.substring(0, 300) + (rawStr.length > 300 ? '\n...' : '') : '—';
+
+    // Show field names — for R1 show full mapping analysis, for others show field list
+    let fieldAnalysis = '';
+    if (r.parsed && r.parsed.length > 0 && typeof r.parsed[0] === 'object') {
+      const first = r.parsed[0];
+      const fields = Object.keys(first);
+      const isR1 = r.label.includes('All Trainings');
+
+      if (isR1) {
+        // For R1: show exactly which fields sync code picks up vs what's missing
+        const picks = [
+          { field:'id',                maps:'training id',   val:first.id },
+          { field:'name',              maps:'name',          val:first.name },
+          { field:'trainingName',      maps:'name (alt)',    val:first.trainingName },
+          { field:'type',              maps:'type',          val:first.type },
+          { field:'trainingType',      maps:'type (alt)',    val:first.trainingType },
+          { field:'t_start',           maps:'startDate',     val:first.t_start },
+          { field:'startDate',         maps:'startDate (alt)',val:first.startDate },
+          { field:'t_end',             maps:'endDate',       val:first.t_end },
+          { field:'endDate',           maps:'endDate (alt)', val:first.endDate },
+          { field:'completion_status', maps:'status',        val:first.completion_status },
+          { field:'status',            maps:'status (alt)',  val:first.status },
+          { field:'participants',      maps:'participants',  val:first.participants },
+          { field:'participantCount',  maps:'participants (alt)', val:first.participantCount },
+          { field:'trainees',          maps:'trainees',      val:first.trainees },
+          { field:'locations',         maps:'locations',     val:first.locations },
+          { field:'detail',            maps:'notes',         val:first.detail },
+        ].filter(p => p.val !== undefined);
+
+        // Check if the critical id field is present
+        const hasId = first.id !== undefined;
+        const hasName = first.name !== undefined || first.trainingName !== undefined;
+
+        fieldAnalysis = `
+          <div style="margin-top:10px;padding:10px 12px;background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.15);border-radius:7px;">
+            <div style="font-size:.7rem;font-weight:700;color:var(--ac);margin-bottom:8px;">
+              📊 R1 Field Mapping — ${r.parsed.length} trainings returned
+              ${!hasId ? '<span style="color:var(--rd);margin-left:8px;">⚠️ No "id" field — trainings will not load!</span>' : ''}
+              ${!hasName ? '<span style="color:var(--wn);margin-left:8px;">⚠️ No "name" field — names will show as "—"</span>' : ''}
+            </div>
+            <div class="dgrid2" style="margin-bottom:8px;">
+              ${picks.map(p=>`<div class="di">
+                <div class="dikey" style="color:var(--gn);font-size:.6rem;">✅ ${p.field} → ${p.maps}</div>
+                <div class="dival" style="font-size:.72rem;">${String(p.val).substring(0,38)}</div>
+              </div>`).join('')}
+            </div>
+            <div style="font-size:.65rem;color:var(--t3);border-top:1px solid var(--bd);padding-top:6px;margin-top:4px;">
+              All fields in API response: <span style="font-family:'JetBrains Mono',monospace;color:var(--t2);">${fields.join(' · ')}</span>
+            </div>
+          </div>`;
+      } else {
+        fieldAnalysis = `<div style="margin-top:7px;font-size:.68rem;color:var(--t3);">
+          Fields: <span style="font-family:'JetBrains Mono',monospace;color:var(--t2);">${fields.join(', ')}</span>
+        </div>`;
+      }
+    }
+
+    const uid = 'dbg_'+r.label.replace(/[^a-z0-9]/gi,'');
+    return `<div style="background:var(--s1);border:1px solid ${statusColor};border-radius:10px;padding:13px 15px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+        <div>
+          <span style="font-size:1rem;">${icon}</span>
+          <strong style="margin-left:6px;font-size:.84rem;">${r.label}</strong>
+          <span style="margin-left:8px;font-size:.7rem;color:var(--t3);">${r.note}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${r.status?`<span class="chip chgr" style="font-size:.65rem;">HTTP ${r.status}</span>`:''}
+          <span class="chip chgr" style="font-size:.65rem;">${r.ms}ms</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:${statusColor};">${r.parsed?.length ?? 0} records parsed</span>
+        </div>
+      </div>
+      ${r.err ? `<div style="color:var(--rd);font-size:.75rem;margin-bottom:6px;">Error: ${r.err}</div>` : ''}
+      ${fieldAnalysis}
+      <div style="margin-top:8px;">
+        <button class="btn bts sm" onclick="document.getElementById('${uid}').style.display=document.getElementById('${uid}').style.display==='none'?'block':'none'">
+          Toggle raw response
+        </button>
+        <pre id="${uid}" style="display:none;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--t2);background:var(--s3);padding:10px;border-radius:6px;overflow:auto;max-height:200px;white-space:pre-wrap;">${preview}</pre>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function nd(v) {
+  if (!v) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m=String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  try { const d=new Date(v); if (!isNaN(d)) return d.toISOString().slice(0,10); } catch{}
+  return String(v);
+}
+function fd(s,e) {
+  if (!s) return '—';
+  const f=d=>{ try{return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});}catch{return d;} };
+  return s===e?f(s):`${f(s)}–${f(e)}`;
+}
+function set(id,val) { const el=document.getElementById(id); if(el)el.textContent=val; }
+function showPage(n) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(i=>i.classList.remove('active'));
+  const pg=document.getElementById('page-'+n);
+  if (pg) pg.classList.add('active');
+  document.querySelectorAll('.ni[data-page]').forEach(i=>{
+    if (i.dataset.page===n) i.classList.add('active');
+  });
+}
+function openMo(id)  { document.getElementById(id).classList.add('open'); }
+function closeMo(id) { document.getElementById(id).classList.remove('open'); }
+function showLoad(m)   { document.getElementById('loadTxt').textContent=m||'Loading...'; document.getElementById('loadOv').style.display='flex'; }
+function updateLoad(m) { document.getElementById('loadTxt').textContent=m; }
+function hideLoad()    { document.getElementById('loadOv').style.display='none'; }
+function toast(msg,type='i') {
+  const t=document.getElementById('toast'); const el=document.createElement('div');
+  el.className=`ti ti${type}`; el.textContent=msg; t.appendChild(el);
+  setTimeout(()=>el.remove(),4000);
+}
+function logout() {
+  if (!confirm('Sign out and clear session?')) return;
+  ST.token=null; ST.user=null;
+  saveST();
+  document.getElementById('mainApp').style.display='none';
+  document.getElementById('loginPage').style.display='flex';
+  document.getElementById('lUser').value='';
+  document.getElementById('lRef').value='';
+}
+
+function dispProxy() {
+  const el = document.getElementById('lpDisplay');
+  if (el) el.textContent = PROXY ? PROXY.replace(/^https?:\/\//, '') : 'same-origin (built-in)';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  loadST();
+  dispProxy();
+  document.querySelectorAll('.mo').forEach(o =>
+    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); })
+  );
+  if (ST.token) {
+    try {
+      await launchApp();
+    } catch(e) {
+      console.error('Launch error:', e);
+      // Always show login if launch fails — never leave a blank page
+      document.getElementById('mainApp').style.display = 'none';
+      document.getElementById('loginPage').style.display = 'flex';
+      ST.token = null; saveST();
+    }
+  } else {
+    document.getElementById('loginPage').style.display = 'flex';
+  }
+});
+</script>
+</body>
+</html>
