@@ -1174,7 +1174,7 @@ function viewDetail(id) {
 
   // R8 — Feedback Mapping
   const fb=ad.feedbackMapping||[];
-  const REQUIRED_TPLS=[6,14,16,17];
+  const REQUIRED_TPLS=[14,15,16,17];
   const foundIds=new Set(fb.map(f=>f.templateId));
   const r8Html=`<div class="data-section">
     ${sectionHdr('R8 — Feedback Template Mapping','modCbcFeedbackTemplateMappingGet?trainingId=',fb.length,fb.length>0)}
