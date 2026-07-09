@@ -231,7 +231,7 @@ textarea{resize:vertical;min-height:60px;}
     <div class="tbr">
       <span class="badge bac">⬤ LIVE</span>
       <span class="badge brd" id="riskBadge">— AT RISK</span>
-      <button class="btn bts sm" onclick="syncAll()">🔄 Sync</button>
+      <button class="btn bts sm" onclick="syncAll()" title="Quick sync — skips trainings synced in the last 15 min">🔄 Sync</button>
       <button class="btn btg sm" onclick="genPDF()">📄 PDF</button>
       <button class="btn bts ic" onclick="openSettings()" title="Proxy Settings">⚙️</button>
       <div class="upill"><div class="av">TL</div><span id="userLabel">Training Lead</span></div>
@@ -260,7 +260,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="page active" id="page-dashboard">
         <div class="sh">
           <div><div class="stl">Dashboard</div><div class="sub" id="dashSub">Loading...</div></div>
-          <button class="btn btp sm" onclick="syncAll()"><span class="ld" id="syncLd" style="display:none;"></span> 🔄 Sync All</button>
+          <button class="btn btp sm" onclick="syncAll(true)" title="Force full resync of every training"><span class="ld" id="syncLd" style="display:none;"></span> 🔄 Sync All</button>
         </div>
         <!-- Daily banner -->
         <div class="dbanner">
@@ -566,16 +566,16 @@ const STEPS = [
     code:'MSC010', name:'Feedback Form Mapping',
     phase:'Pre-Training', when:'T-7', app:'MSMS', resp:'R8', trackable:true,
     endpoint:'modCbcFeedbackTemplateMappingGet?trainingId=',
-    rule:'templateIds 6, 14, 16, 17 must ALL be present',
+    rule:'templateIds 15, 14, 16, 17 must ALL be present',
     validate(t, ad) {
       const fb = ad.feedbackMapping || [];
       if (!fb.length) return fail('No feedback templates mapped to this training (R8 empty)');
-      const required = [6, 14, 16, 17];
+      const required = [15, 14, 16, 17];
       const found = new Set(fb.map(f=>f.templateId));
       const missing = required.filter(id=>!found.has(id));
       const present = required.filter(id=>found.has(id));
       if (!missing.length)
-        return pass(`All 4 required templates present (IDs: 6, 14, 16, 17). Total mappings: ${fb.length}`);
+        return pass(`All 4 required templates present (IDs: 15, 14, 16, 17). Total mappings: ${fb.length}`);
       return fail(`Missing template IDs: [${missing.join(', ')}] — Present: [${present.join(', ')}] out of 4 required (${fb.length} total mappings)`);
     }
   },
@@ -631,6 +631,10 @@ const STEPS = [
 ];
 
 const TRACKABLE = STEPS.filter(s=>s.trackable); // 9 steps
+
+// Skip re-fetching per-training details (5 calls each) if synced more recently than this,
+// unless the user explicitly forces a full resync. Cuts repeat-sync API calls drastically.
+const STALE_MS = 15 * 60 * 1000; // 15 minutes
 
 function pass(msg) { return {ok:true,  msg}; }
 function fail(msg) { return {ok:false, msg}; }
@@ -816,7 +820,7 @@ function toArr(v) {
 // ═══════════════════════════════════════════════════════════════
 // SYNC — load all trainings from API then per-training details
 // ═══════════════════════════════════════════════════════════════
-async function syncAll() {
+async function syncAll(force) {
   showLoad('Connecting to APIs...');
   const sl = document.getElementById('syncLd'); if (sl) sl.style.display = 'inline-block';
   // Confirm token state before making any calls
@@ -878,8 +882,15 @@ async function syncAll() {
     }
 
     // 3. Per-training detail calls
+    let skipped = 0;
     for (let i=0; i<ST.trainings.length; i++) {
       const t = ST.trainings[i];
+
+      // Skip the 5 detail calls entirely if this training was synced recently and
+      // we're not doing a forced full resync — its apiDetails/stepResults are kept as-is.
+      const isFresh = t.lastSynced && (Date.now() - new Date(t.lastSynced).getTime() < STALE_MS);
+      if (isFresh && !force) { skipped++; continue; }
+
       updateLoad(`Syncing ${t.id} (${i+1}/${ST.trainings.length}): ${t.name.substring(0,28)}...`);
 
       const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
@@ -910,10 +921,11 @@ async function syncAll() {
       }
       t.lastSynced = new Date().toISOString();
     }
+    if (skipped) console.log(`[TCT] syncAll — skipped ${skipped} recently-synced training(s), saved ${skipped*5} calls`);
 
     saveST();
     renderAll();
-    toast(`Loaded ${ST.trainings.length} trainings ✓`, 's');
+    toast(`Loaded ${ST.trainings.length} trainings${skipped ? ` (${skipped} cached)` : ''} ✓`, 's');
   } catch(e) {
     console.error(e);
     toast('Sync failed — '+e.message, 'e');
@@ -1174,7 +1186,7 @@ function viewDetail(id) {
 
   // R8 — Feedback Mapping
   const fb=ad.feedbackMapping||[];
-  const REQUIRED_TPLS=[6,14,16,17];
+  const REQUIRED_TPLS=[15,14,16,17];
   const foundIds=new Set(fb.map(f=>f.templateId));
   const r8Html=`<div class="data-section">
     ${sectionHdr('R8 — Feedback Template Mapping','modCbcFeedbackTemplateMappingGet?trainingId=',fb.length,fb.length>0)}
