@@ -1635,6 +1635,7 @@ function getDailyRow(t, idx) {
     return words.some(w => an.includes(w));
   });
   const leadName = calEntry?.verticalLeadName
+    || calEntry?.verticalLead
     || calEntry?.leadName
     || '—';
 
