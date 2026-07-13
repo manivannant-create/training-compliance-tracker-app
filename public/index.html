@@ -209,7 +209,11 @@ textarea{resize:vertical;min-height:60px;}
 .dr-timing.a{background:rgba(245,158,11,.12);color:var(--wn);}
 .dr-timing.e{background:rgba(124,58,237,.12);color:#a78bfa;}
 .dr-timing.n{background:rgba(30,45,68,.8);color:var(--t1);}
-/* ── SKELETON LOADER ── */
+/* ── SORT ICONS ── */
+.sort-icon{font-size:.65rem;opacity:.4;margin-left:3px;}
+.sort-icon.asc{opacity:1;color:var(--ac);}
+.sort-icon.desc{opacity:1;color:var(--ac);}
+#dailyTable thead th:hover{background:var(--s3);}
 .skel-row td{padding:11px 12px;}
 .skel-cell{height:13px;border-radius:3px;background:linear-gradient(90deg,var(--s2) 25%,var(--s3) 50%,var(--s2) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -424,22 +428,40 @@ textarea{resize:vertical;min-height:60px;}
 
         <!-- Daily report table -->
         <div class="tw" style="overflow-x:auto;">
+          <!-- Column filters row -->
+          <div style="padding:10px 12px;border-bottom:1px solid var(--bd);background:var(--s2);display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:.7rem;color:var(--t3);font-weight:600;">Filter:</span>
+            <input type="text" id="drFilterLead"    placeholder="Lead name..."    oninput="renderDailyReport()" style="width:110px;font-size:.72rem;padding:4px 8px;">
+            <input type="text" id="drFilterSubject" placeholder="Subject..."      oninput="renderDailyReport()" style="width:130px;font-size:.72rem;padding:4px 8px;">
+            <input type="text" id="drFilterTrainer" placeholder="Trainer..."      oninput="renderDailyReport()" style="width:110px;font-size:.72rem;padding:4px 8px;">
+            <select id="drFilterAbsent" onchange="renderDailyReport()" style="font-size:.72rem;padding:4px 8px;background:var(--s3);border:1px solid var(--bd);border-radius:6px;color:var(--t1);">
+              <option value="">All Absent</option>
+              <option value="yes">Has Absentees</option>
+              <option value="no">Full Attendance</option>
+            </select>
+            <select id="drFilterFB" onchange="renderDailyReport()" style="font-size:.72rem;padding:4px 8px;background:var(--s3);border:1px solid var(--bd);border-radius:6px;color:var(--t1);">
+              <option value="">All Feedback</option>
+              <option value="pending">FB Pending</option>
+              <option value="complete">FB Complete</option>
+            </select>
+            <button class="btn bts sm" onclick="clearDailyFilters()" style="font-size:.7rem;padding:4px 9px;">✕ Clear</button>
+          </div>
           <table id="dailyTable" style="min-width:1100px;">
             <thead>
-              <tr>
-                <th>S.No</th>
-                <th>Lead Name</th>
-                <th>Subject / Class / Batch</th>
-                <th>Activity Cal Code</th>
-                <th>Training ID</th>
-                <th>Trainer Name & Phone</th>
-                <th>Timing</th>
-                <th>Expected</th>
-                <th>Present</th>
-                <th>Absent</th>
+              <tr id="dailyThead">
+                <th onclick="sortDaily('idx')"       style="cursor:pointer;user-select:none;">S.No <span class="sort-icon" data-col="idx">↕</span></th>
+                <th onclick="sortDaily('leadName')"  style="cursor:pointer;user-select:none;">Lead Name <span class="sort-icon" data-col="leadName">↕</span></th>
+                <th onclick="sortDaily('name')"      style="cursor:pointer;user-select:none;">Subject / Class / Batch <span class="sort-icon" data-col="name">↕</span></th>
+                <th onclick="sortDaily('actCode')"   style="cursor:pointer;user-select:none;">Activity Cal Code <span class="sort-icon" data-col="actCode">↕</span></th>
+                <th onclick="sortDaily('id')"        style="cursor:pointer;user-select:none;">Training ID <span class="sort-icon" data-col="id">↕</span></th>
+                <th onclick="sortDaily('trainerDisplay')" style="cursor:pointer;user-select:none;">Trainer Name & Phone <span class="sort-icon" data-col="trainerDisplay">↕</span></th>
+                <th onclick="sortDaily('timing')"    style="cursor:pointer;user-select:none;">Timing <span class="sort-icon" data-col="timing">↕</span></th>
+                <th onclick="sortDaily('expected')"  style="cursor:pointer;user-select:none;">Expected <span class="sort-icon" data-col="expected">↕</span></th>
+                <th onclick="sortDaily('present')"   style="cursor:pointer;user-select:none;">Present <span class="sort-icon" data-col="present">↕</span></th>
+                <th onclick="sortDaily('absent')"    style="cursor:pointer;user-select:none;">Absent <span class="sort-icon" data-col="absent">↕</span></th>
                 <th>Absent Reason</th>
-                <th>Feedback Received</th>
-                <th>Feedback Not Submitted</th>
+                <th onclick="sortDaily('fbReceived')" style="cursor:pointer;user-select:none;">Feedback Received <span class="sort-icon" data-col="fbReceived">↕</span></th>
+                <th onclick="sortDaily('fbNotSubmitted')" style="cursor:pointer;user-select:none;">Feedback Not Submitted <span class="sort-icon" data-col="fbNotSubmitted">↕</span></th>
               </tr>
             </thead>
             <tbody id="dailyBody">
@@ -942,20 +964,30 @@ async function syncAll(force) {
 
     if (rawList.length > 0) {
       ST.trainings = rawList.map(r => {
-        const id = String(r.id||'');
+        const id = String(r.id||r.trainingId||'');
         const ex = localMap[id]||{};
+
+        // Capture ALL known date field names the API might use
+        const rawStart = r.t_start||r.startDate||r.start_date||r.fromDate||r.trainingStartDate||r.training_start||r.date||ex.startDate||'';
+        const rawEnd   = r.t_end  ||r.endDate  ||r.end_date  ||r.toDate  ||r.trainingEndDate  ||r.training_end  ||rawStart||ex.endDate||'';
+
+        // Capture ALL known name field names
+        const rawName  = r.name||r.trainingName||r.training_name||r.title||r.subject||r.subjectName||r.actName||ex.name||'';
+
+        // Log any training with no name or dates — helps debug
+        if (!rawName || !rawStart) console.warn('[TCT] mapping gap — id:', id, '| keys:', Object.keys(r).join(', '), '| sample:', JSON.stringify(r).substring(0,200));
+
         return {
           id,
-          name:        (r.name||r.trainingName||ex.name||'—').trim(),
-          type:        r.type||r.trainingType||ex.type||'Academic',
-          startDate:   nd(r.t_start||r.startDate||r.start_date||ex.startDate),
-          endDate:     nd(r.t_end||r.endDate||r.end_date||ex.endDate),
-          status:      r.completion_status||r.status||ex.status||'pending',
-          trainees:    +(r.trainees||r.traineeCount||ex.trainees||0),
-          participants:+(r.participants||r.participantCount||ex.participants||0),
-          locations:   r.locations||r.location||ex.locations||'—',
-          notes:       r.detail||r.remarks||ex.notes||'',
-          // Preserve existing detail data — don't wipe it before lazy load finishes
+          name:        rawName.trim() || `Training ${id}`,
+          type:        r.type||r.trainingType||r.training_type||ex.type||'Academic',
+          startDate:   nd(rawStart),
+          endDate:     nd(rawEnd) || nd(rawStart), // fallback: same-day training
+          status:      r.completion_status||r.status||r.trainingStatus||ex.status||'pending',
+          trainees:    +(r.trainees||r.traineeCount||r.expectedCount||r.expectation_count||ex.trainees||0),
+          participants:+(r.participants||r.participantCount||r.presentCount||r.present_count||ex.participants||0),
+          locations:   r.locations||r.location||r.venue||ex.locations||'—',
+          notes:       r.detail||r.remarks||r.notes||ex.notes||'',
           apiDetails:  ex.apiDetails||{},
           stepResults: ex.stepResults||{},
           lastSynced:  ex.lastSynced||null,
@@ -1534,12 +1566,21 @@ function getDailyTrainings() {
   const filter = document.getElementById('dailyDateFilter')?.value || 'both';
 
   return ST.trainings.filter(t => {
-    const s = t.startDate; const e = t.endDate;
-    const matchToday     = s <= todayStr     && e >= todayStr;
-    const matchYesterday = s <= yesterdayStr && e >= yesterdayStr;
-    if (filter === 'today')     return matchToday;
-    if (filter === 'yesterday') return matchYesterday;
-    return matchToday || matchYesterday;
+    const s = t.startDate || '';
+    // If endDate is empty/missing, treat training as single-day (endDate = startDate)
+    const e = t.endDate || s;
+
+    // Also check dayBreak dates — some trainings only have dates in schedule, not on R1
+    const dbDates = (t.apiDetails?.dayBreak||[]).map(d => nd(d.trainingDate||'')).filter(Boolean);
+    const hasToday     = (s && e && s <= todayStr     && e >= todayStr)     || dbDates.includes(todayStr);
+    const hasYesterday = (s && e && s <= yesterdayStr && e >= yesterdayStr) || dbDates.includes(yesterdayStr);
+
+    // If no dates at all, include in "both" so it's visible and user can check
+    const noDates = !s && !e && !dbDates.length;
+
+    if (filter === 'today')     return hasToday;
+    if (filter === 'yesterday') return hasYesterday;
+    return hasToday || hasYesterday || noDates;
   });
 }
 
@@ -1608,6 +1649,37 @@ function getDailyRow(t, idx) {
            expected, present, absent, absentReason, fbReceived, fbNotSubmitted, t };
 }
 
+// Sort/filter state for daily report
+let dailySort = { col: 'idx', dir: 'asc' };
+
+function sortDaily(col) {
+  if (dailySort.col === col) {
+    dailySort.dir = dailySort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    dailySort.col = col;
+    dailySort.dir = 'asc';
+  }
+  document.querySelectorAll('.sort-icon').forEach(el => {
+    el.classList.remove('asc','desc');
+    el.textContent = '↕';
+  });
+  const icon = document.querySelector(`.sort-icon[data-col="${col}"]`);
+  if (icon) { icon.classList.add(dailySort.dir); icon.textContent = dailySort.dir==='asc'?'↑':'↓'; }
+  renderDailyReport();
+}
+
+function clearDailyFilters() {
+  ['drFilterLead','drFilterSubject','drFilterTrainer'].forEach(id => {
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  ['drFilterAbsent','drFilterFB'].forEach(id => {
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  dailySort = { col:'idx', dir:'asc' };
+  document.querySelectorAll('.sort-icon').forEach(el => { el.classList.remove('asc','desc'); el.textContent='↕'; });
+  renderDailyReport();
+}
+
 function renderDailyReport() {
   const list = getDailyTrainings();
   const tbody = document.getElementById('dailyBody');
@@ -1626,43 +1698,67 @@ function renderDailyReport() {
   if (sub) sub.textContent = `${dateLabel} — ${list.length} training(s)`;
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="13" class="empty">No trainings scheduled for today or yesterday</td></tr>';
-    // Zero out summary
-    ['dr-total','dr-present','dr-expected','dr-absent','dr-fb','dr-fbpend'].forEach(id => set(id, '0'));
+    tbody.innerHTML = '<tr><td colspan="13" class="empty">No trainings for selected date range</td></tr>';
+    ['dr-total','dr-present','dr-expected','dr-absent','dr-fb','dr-fbpend'].forEach(id => set(id,'0'));
     return;
   }
 
-  const rows = list.map((t,i) => getDailyRow(t, i+1));
+  let rows = list.map((t,i) => getDailyRow(t,i+1));
 
-  // Summary totals
-  const totExp  = rows.reduce((a,r) => a+r.expected,       0);
-  const totPres = rows.reduce((a,r) => a+r.present,        0);
-  const totAbs  = rows.reduce((a,r) => a+r.absent,         0);
-  const totFb   = rows.reduce((a,r) => a+r.fbReceived,     0);
-  const totFbP  = rows.reduce((a,r) => a+r.fbNotSubmitted, 0);
-  set('dr-total',    list.length);
-  set('dr-present',  totPres);
-  set('dr-expected', totExp);
-  set('dr-absent',   totAbs);
-  set('dr-fb',       totFb);
-  set('dr-fbpend',   totFbP);
+  // Summary from full unfiltered list
+  set('dr-total',   list.length);
+  set('dr-present', rows.reduce((a,r)=>a+r.present,0));
+  set('dr-expected',rows.reduce((a,r)=>a+r.expected,0));
+  set('dr-absent',  rows.reduce((a,r)=>a+r.absent,0));
+  set('dr-fb',      rows.reduce((a,r)=>a+r.fbReceived,0));
+  set('dr-fbpend',  rows.reduce((a,r)=>a+r.fbNotSubmitted,0));
 
-  tbody.innerHTML = rows.map(r => `<tr>
-    <td style="font-weight:700;text-align:center;">${r.idx}</td>
-    <td style="font-weight:600;">${r.leadName}</td>
-    <td style="max-width:180px;">${r.name}</td>
+  // Apply column filters
+  const fLead    = (document.getElementById('drFilterLead')?.value||'').toLowerCase();
+  const fSubject = (document.getElementById('drFilterSubject')?.value||'').toLowerCase();
+  const fTrainer = (document.getElementById('drFilterTrainer')?.value||'').toLowerCase();
+  const fAbsent  = document.getElementById('drFilterAbsent')?.value||'';
+  const fFB      = document.getElementById('drFilterFB')?.value||'';
+  if (fLead)               rows = rows.filter(r=>r.leadName.toLowerCase().includes(fLead));
+  if (fSubject)            rows = rows.filter(r=>r.name.toLowerCase().includes(fSubject));
+  if (fTrainer)            rows = rows.filter(r=>r.trainerDisplay.toLowerCase().includes(fTrainer));
+  if (fAbsent === 'yes')   rows = rows.filter(r=>r.absent>0);
+  if (fAbsent === 'no')    rows = rows.filter(r=>r.absent===0);
+  if (fFB === 'pending')   rows = rows.filter(r=>r.fbNotSubmitted>0);
+  if (fFB === 'complete')  rows = rows.filter(r=>r.fbNotSubmitted===0);
+
+  // Sort
+  const col = dailySort.col;
+  const dir = dailySort.dir === 'asc' ? 1 : -1;
+  rows.sort((a,b) => {
+    const av=a[col], bv=b[col];
+    if (typeof av==='number') return (av-bv)*dir;
+    return String(av||'').localeCompare(String(bv||''))*dir;
+  });
+  rows.forEach((r,i)=>r.idx=i+1);
+
+  if (!rows.length) {
+    tbody.innerHTML='<tr><td colspan="13" class="empty">No results match filters</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r=>`<tr>
+    <td style="text-align:center;color:var(--t3);font-weight:700;">${r.idx}</td>
+    <td style="font-weight:600;font-size:.78rem;">${r.leadName}</td>
+    <td style="max-width:180px;font-size:.78rem;">${r.name}</td>
     <td><span class="tid">${r.actCode}</span></td>
-    <td><span class="tid">${r.id}</span></td>
+    <td><span class="tid" style="font-size:.75rem;">${r.id}</span></td>
     <td style="font-size:.72rem;">${r.trainerDisplay}</td>
-    <td>${r.timing !== '—' ? `<span class="dr-timing ${r.timingCls}">${r.timing}</span>` : '—'}</td>
-    <td style="text-align:center;font-weight:600;">${r.expected}</td>
-    <td style="text-align:center;font-weight:600;color:var(--gn);">${r.present}</td>
+    <td>${r.timing!=='—'?`<span class="dr-timing ${r.timingCls}">${r.timing}</span>`:'—'}</td>
+    <td style="text-align:center;font-weight:700;">${r.expected||'—'}</td>
+    <td style="text-align:center;font-weight:700;color:var(--gn);">${r.present}</td>
     <td style="text-align:center;font-weight:700;color:${r.absent>0?'var(--rd)':'var(--gn)'};">${r.absent}</td>
-    <td style="font-size:.7rem;color:var(--t2);max-width:160px;">${r.absentReason}</td>
-    <td style="text-align:center;">${r.fbReceived}</td>
-    <td style="text-align:center;color:${r.fbNotSubmitted>0?'var(--rd)':'var(--gn)'};">${r.fbNotSubmitted}</td>
+    <td style="font-size:.7rem;color:var(--t2);max-width:160px;line-height:1.4;">${r.absentReason}</td>
+    <td style="text-align:center;font-weight:600;">${r.fbReceived}</td>
+    <td style="text-align:center;font-weight:700;color:${r.fbNotSubmitted>0?'var(--rd)':'var(--gn)'};">${r.fbNotSubmitted}</td>
   </tr>`).join('');
 }
+
 
 // ── DAILY REPORT — EXCEL DOWNLOAD ─────────────────────────────
 function downloadDailyExcel() {
