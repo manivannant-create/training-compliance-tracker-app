@@ -400,12 +400,14 @@ textarea{resize:vertical;min-height:60px;}
           </div>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:5px;">
-              <label style="font-size:.72rem;color:var(--t2);">Date:</label>
-              <select id="dailyDateFilter" class="bts sm" onchange="renderDailyReport()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
-                <option value="both">Today + Yesterday</option>
-                <option value="today">Today Only</option>
-                <option value="yesterday">Yesterday Only</option>
-              </select>
+              <label style="font-size:.72rem;color:var(--t2);">From:</label>
+              <input type="date" id="dailyFromDate" class="bts sm" onchange="onDailyRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <label style="font-size:.72rem;color:var(--t2);">To:</label>
+              <input type="date" id="dailyToDate" class="bts sm" onchange="onDailyRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <button class="btn bts sm" onclick="setDailyRangePreset('today')" style="font-size:.68rem;padding:5px 9px;">Today</button>
+              <button class="btn bts sm" onclick="setDailyRangePreset('yesterday')" style="font-size:.68rem;padding:5px 9px;">Yesterday</button>
+              <button class="btn bts sm" onclick="setDailyRangePreset('both')" style="font-size:.68rem;padding:5px 9px;">Last 2 Days</button>
+              <button class="btn bts sm" onclick="setDailyRangePreset('week')" style="font-size:.68rem;padding:5px 9px;">Last 7 Days</button>
             </div>
             <button class="btn btg sm" onclick="downloadDailyExcel()">⬇️ Excel</button>
             <button class="btn btp sm" onclick="downloadDailyPDF()">📄 PDF</button>
@@ -1557,13 +1559,49 @@ function renderStepsTable() {
 // DAILY REPORT
 // ═══════════════════════════════════════════════════════════════
 
-function getDailyTrainings() {
+function fmtD(d) { return d.toISOString().slice(0,10); }
+
+// Returns {from, to} as yyyy-mm-dd strings from the date inputs, defaulting to
+// yesterday..today (same default the old "Today + Yesterday" option gave).
+function getDailyRange() {
   const today     = new Date(); today.setHours(0,0,0,0);
   const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
-  const fmt = d => d.toISOString().slice(0,10);
-  const todayStr     = fmt(today);
-  const yesterdayStr = fmt(yesterday);
-  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
+  const fromEl = document.getElementById('dailyFromDate');
+  const toEl   = document.getElementById('dailyToDate');
+  const from = fromEl?.value || fmtD(yesterday);
+  const to   = toEl?.value   || fmtD(today);
+  // Guard against an inverted range (From after To) — swap so filtering still makes sense
+  return from <= to ? { from, to } : { from: to, to: from };
+}
+
+function setDailyRangePreset(preset) {
+  const today     = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const weekAgo   = new Date(today); weekAgo.setDate(today.getDate()-6);
+  let from, to;
+  if (preset === 'today')          { from = fmtD(today);     to = fmtD(today); }
+  else if (preset === 'yesterday') { from = fmtD(yesterday);  to = fmtD(yesterday); }
+  else if (preset === 'week')      { from = fmtD(weekAgo);    to = fmtD(today); }
+  else                              { from = fmtD(yesterday);  to = fmtD(today); } // 'both' / default
+  const fromEl = document.getElementById('dailyFromDate');
+  const toEl   = document.getElementById('dailyToDate');
+  if (fromEl) fromEl.value = from;
+  if (toEl)   toEl.value   = to;
+  renderDailyReport();
+}
+
+function onDailyRangeChange() { renderDailyReport(); }
+
+// Called once on page load / showPage('daily') to seed the inputs with a sensible default
+function initDailyRangeDefaults() {
+  const fromEl = document.getElementById('dailyFromDate');
+  const toEl   = document.getElementById('dailyToDate');
+  if (fromEl && !fromEl.value) fromEl.value = getDailyRange().from;
+  if (toEl   && !toEl.value)   toEl.value   = getDailyRange().to;
+}
+
+function getDailyTrainings() {
+  const { from: fromStr, to: toStr } = getDailyRange();
 
   return ST.trainings.filter(t => {
     const s = t.startDate || '';
@@ -1572,15 +1610,14 @@ function getDailyTrainings() {
 
     // Also check dayBreak dates — some trainings only have dates in schedule, not on R1
     const dbDates = (t.apiDetails?.dayBreak||[]).map(d => nd(d.trainingDate||'')).filter(Boolean);
-    const hasToday     = (s && e && s <= todayStr     && e >= todayStr)     || dbDates.includes(todayStr);
-    const hasYesterday = (s && e && s <= yesterdayStr && e >= yesterdayStr) || dbDates.includes(yesterdayStr);
+    // Overlap test: training's [s,e] window intersects the selected [fromStr,toStr] range
+    const rangeOverlaps = (s && e && s <= toStr && e >= fromStr);
+    const dbInRange = dbDates.some(d => d >= fromStr && d <= toStr);
 
-    // If no dates at all, include in "both" so it's visible and user can check
+    // If no dates at all, include so it's visible and user can check
     const noDates = !s && !e && !dbDates.length;
 
-    if (filter === 'today')     return hasToday;
-    if (filter === 'yesterday') return hasYesterday;
-    return hasToday || hasYesterday || noDates;
+    return rangeOverlaps || dbInRange || noDates;
   });
 }
 
@@ -1681,18 +1718,16 @@ function clearDailyFilters() {
 }
 
 function renderDailyReport() {
+  initDailyRangeDefaults();
   const list = getDailyTrainings();
   const tbody = document.getElementById('dailyBody');
   if (!tbody) return;
 
-  const today = new Date();
-  const yest  = new Date(Date.now()-86400000);
-  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
-  const dateLabel = filter==='today'
-    ? today.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})
-    : filter==='yesterday'
-    ? yest.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})
-    : `${yest.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${today.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`;
+  const { from: fromStr, to: toStr } = getDailyRange();
+  const fLbl = d => new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
+  const dateLabel = fromStr === toStr
+    ? fLbl(fromStr)
+    : `${new Date(fromStr+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${new Date(toStr+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`;
 
   const sub = document.getElementById('dailySubtitle');
   if (sub) sub.textContent = `${dateLabel} — ${list.length} training(s)`;
@@ -1784,8 +1819,9 @@ function downloadDailyExcel() {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  const date = new Date().toISOString().slice(0,10);
-  a.href = url; a.download = `Daily_Training_Report_${date}.csv`;
+  const { from: rangeFrom, to: rangeTo } = getDailyRange();
+  const rangeTag = rangeFrom === rangeTo ? rangeFrom : `${rangeFrom}_to_${rangeTo}`;
+  a.href = url; a.download = `Daily_Training_Report_${rangeTag}.csv`;
   a.click(); URL.revokeObjectURL(url);
   toast('Excel/CSV downloaded ✓', 's');
 }
@@ -1798,14 +1834,17 @@ function downloadDailyPDF() {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
   const now  = new Date();
   const rows = list.map((t,i) => getDailyRow(t,i+1));
-  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
+  const { from: rangeFrom, to: rangeTo } = getDailyRange();
+  const rangeLabel = rangeFrom === rangeTo
+    ? new Date(rangeFrom+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+    : `${new Date(rangeFrom+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${new Date(rangeTo+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`;
 
   // Header
   doc.setFillColor(10,15,30); doc.rect(0,0,420,22,'F');
   doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont(undefined,'bold');
   doc.text('ACADEMIC TRAINING UPDATE',14,10);
   doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(148,163,184);
-  doc.text(`Date: ${now.toLocaleDateString('en-IN',{day:'2-digit',month:'2-digit',year:'numeric'})}`,14,17);
+  doc.text(`Report Period: ${rangeLabel}`,14,17);
   doc.setTextColor(0,212,255); doc.setFontSize(9);
   doc.text(`TOTAL TRAININGS: ${list.length}`,360,10);
   doc.text(`Generated: ${now.toLocaleTimeString('en-IN')}`,360,17);
