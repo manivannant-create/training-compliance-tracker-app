@@ -1628,18 +1628,14 @@ function getDailyRow(t, idx) {
   const db    = ad.dayBreak    || [];
   const fb    = ad.feedbackMapping || [];
 
-  // Lead name — Training-Observer or from activity calendar
-  const observer = staff.find(s => s.staffType === 'Training-Observer');
+  // Lead name — from activity calendar entry matched by name (verticalLeadName, then leadName)
   const calEntry = (ad.activityCalendar||[]).find(a => {
     const an = (a.actName||'').toLowerCase();
     const words = (t.name||'').toLowerCase().split(' ').filter(w=>w.length>3).slice(0,3);
     return words.some(w => an.includes(w));
   });
-  const leadName = observer?.staffName
-    || calEntry?.verticalLeadName
+  const leadName = calEntry?.verticalLeadName
     || calEntry?.leadName
-    || t._raw?.leadName
-    || t._raw?.verticalLead
     || '—';
 
   // Trainer name + phone — Master-Trainer
