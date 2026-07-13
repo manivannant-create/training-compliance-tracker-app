@@ -199,6 +199,24 @@ textarea{resize:vertical;min-height:60px;}
 #lpEdit{display:none;align-items:center;gap:5px;margin-top:6px;}
 #lpEdit.show{display:flex;}
 @media(max-width:768px){.sidebar{display:none;}.content{padding:12px;}.fgrid{grid-template-columns:1fr;}}
+/* ── DAILY REPORT TABLE ── */
+#dailyTable thead th{background:var(--s2);color:var(--t2);font-size:.64rem;padding:8px 10px;}
+#dailyTable tbody td{padding:7px 10px;font-size:.74rem;border-bottom:1px solid rgba(31,48,80,.4);vertical-align:top;}
+#dailyTable tbody tr:nth-child(even){background:rgba(26,34,53,.5);}
+#dailyTable tbody tr:hover{background:rgba(0,212,255,.04);}
+.dr-timing{font-family:'JetBrains Mono',monospace;font-size:.67rem;padding:2px 6px;border-radius:4px;white-space:nowrap;display:inline-block;}
+.dr-timing.m{background:rgba(16,185,129,.12);color:var(--gn);}
+.dr-timing.a{background:rgba(245,158,11,.12);color:var(--wn);}
+.dr-timing.e{background:rgba(124,58,237,.12);color:#a78bfa;}
+.dr-timing.n{background:rgba(30,45,68,.8);color:var(--t1);}
+/* ── SKELETON LOADER ── */
+.skel-row td{padding:11px 12px;}
+.skel-cell{height:13px;border-radius:3px;background:linear-gradient(90deg,var(--s2) 25%,var(--s3) 50%,var(--s2) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-w80{width:80%}.skel-w50{width:50%}.skel-w30{width:30%}
+/* ── SYNC PROGRESS BAR ── */
+.sync-bar{height:3px;background:var(--s3);border-radius:2px;margin-bottom:14px;overflow:hidden;display:none;}
+.sync-bar-fill{height:100%;background:linear-gradient(90deg,var(--ac),var(--pu));border-radius:2px;transition:width .4s ease;width:0%;}
 </style>
 </head>
 <body>
@@ -247,6 +265,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="ni" data-page="trainings" onclick="showPage('trainings')"><span>🗂️</span> All Trainings</div>
       <div class="ni" data-page="compliance" onclick="showPage('compliance')"><span>✅</span> Compliance Check</div>
       <div class="nsec">Reports</div>
+      <div class="ni" data-page="daily" onclick="showPage('daily')"><span>📅</span> Daily Report</div>
       <div class="ni" data-page="deviations" onclick="showPage('deviations')"><span>⚠️</span> Deviations</div>
       <div class="ni" data-page="steps" onclick="showPage('steps')"><span>📋</span> Steps Reference</div>
       <div class="ni" data-page="debug" onclick="showPage('debug')"><span>🔌</span> API Debug</div>
@@ -272,6 +291,9 @@ textarea{resize:vertical;min-height:60px;}
             <div class="dcard dt"><div class="dl">Fully Passed</div><div class="dv" id="dCompliant">—</div></div>
           </div>
         </div>
+        <!-- Sync progress bar -->
+        <div class="sync-bar" id="syncBar"><div class="sync-bar-fill" id="syncBarFill"></div></div>
+
         <div id="critAlert" class="alert alc" style="display:none;"><span>🔴</span><div><strong>CRITICAL:</strong> <span id="critMsg"></span></div></div>
         <div class="sgrid">
           <div class="sc ac"><div class="slbl">Total Trainings</div><div class="sval" style="color:var(--ac);" id="sTotal">—</div></div>
@@ -362,6 +384,68 @@ textarea{resize:vertical;min-height:60px;}
 
         <div id="debugOut">
           <div class="empty">Click "Test All Endpoints" to probe each API and see raw responses</div>
+        </div>
+      </div>
+
+      <!-- DAILY REPORT PAGE -->
+      <div class="page" id="page-daily">
+        <div class="sh">
+          <div>
+            <div class="stl">📅 Daily Training Report</div>
+            <div class="sub" id="dailySubtitle">Today & Yesterday's Trainings</div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <label style="font-size:.72rem;color:var(--t2);">Date:</label>
+              <select id="dailyDateFilter" class="bts sm" onchange="renderDailyReport()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+                <option value="both">Today + Yesterday</option>
+                <option value="today">Today Only</option>
+                <option value="yesterday">Yesterday Only</option>
+              </select>
+            </div>
+            <button class="btn btg sm" onclick="downloadDailyExcel()">⬇️ Excel</button>
+            <button class="btn btp sm" onclick="downloadDailyPDF()">📄 PDF</button>
+          </div>
+        </div>
+
+        <!-- Summary row matching screenshot -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
+          <div class="dcard db"><div class="dl">Total Trainings</div><div class="dv" id="dr-total">—</div></div>
+          <div class="dcard dg"><div class="dl">Total Present</div><div class="dv" id="dr-present">—</div></div>
+          <div class="dcard dp"><div class="dl">Total Expected</div><div class="dv" id="dr-expected">—</div></div>
+          <div class="dcard" style="border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.06);">
+            <div class="dl">Total Absent</div><div class="dv" style="color:var(--rd);" id="dr-absent">—</div>
+          </div>
+          <div class="dcard dt"><div class="dl">Feedback Received</div><div class="dv" id="dr-fb">—</div></div>
+          <div class="dcard" style="border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.06);">
+            <div class="dl">Feedback Pending</div><div class="dv" style="color:var(--wn);" id="dr-fbpend">—</div>
+          </div>
+        </div>
+
+        <!-- Daily report table -->
+        <div class="tw" style="overflow-x:auto;">
+          <table id="dailyTable" style="min-width:1100px;">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Lead Name</th>
+                <th>Subject / Class / Batch</th>
+                <th>Activity Cal Code</th>
+                <th>Training ID</th>
+                <th>Trainer Name & Phone</th>
+                <th>Timing</th>
+                <th>Expected</th>
+                <th>Present</th>
+                <th>Absent</th>
+                <th>Absent Reason</th>
+                <th>Feedback Received</th>
+                <th>Feedback Not Submitted</th>
+              </tr>
+            </thead>
+            <tbody id="dailyBody">
+              <tr><td colspan="13" class="empty">Loading daily report...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -820,14 +904,22 @@ function toArr(v) {
 // ═══════════════════════════════════════════════════════════════
 // SYNC — load all trainings from API then per-training details
 // ═══════════════════════════════════════════════════════════════
+// ── LAZY SYNC — shows UI after step 1, loads details in background ───────────
+const BATCH_SIZE = 3; // fetch details for N trainings concurrently
+
 async function syncAll(force) {
-  showLoad('Connecting to APIs...');
   const sl = document.getElementById('syncLd'); if (sl) sl.style.display = 'inline-block';
-  // Confirm token state before making any calls
+  const bar = document.getElementById('syncBar');
+  const fill = document.getElementById('syncBarFill');
+  if (bar) bar.style.display = 'block';
+  if (fill) fill.style.width = '0%';
+
   console.log('[TCT] syncAll — token:', ST.token ? ST.token.substring(0,30)+'...' : 'MISSING');
   try {
-    // 1. Global data (fetched once for all trainings)
-    updateLoad('Fetching trainings + global data...');
+    // ── PHASE 1: Fetch training list + global data (fast — 3 parallel calls) ──
+    updateLoad('Fetching training list...');
+    if (fill) fill.style.width = '10%';
+
     const [trainRes, calRes, qbRes] = await Promise.allSettled([
       safe(EP.allTrainings),
       safe(EP.activityCal),
@@ -839,14 +931,14 @@ async function syncAll(force) {
       questionBank:     toArr(qbRes.value),
     };
 
-    // 2. Build training list from R1
+    // Build training list from R1
     const rawList = toArr(trainRes.value);
-    // Debug log — visible in browser console (F12 → Console)
     console.log('[TCT] R1 raw:', JSON.stringify(trainRes.value)?.substring(0,400));
     console.log('[TCT] R1 parsed:', rawList.length, 'records | keys:', rawList[0] ? Object.keys(rawList[0]).join(', ') : 'none');
     if (rawList[0]) console.log('[TCT] R1 first record:', JSON.stringify(rawList[0]));
+
     const localMap = {};
-    (ST.trainings||[]).forEach(t=>{ localMap[String(t.id)]=t; });
+    (ST.trainings||[]).forEach(t => { localMap[String(t.id)] = t; });
 
     if (rawList.length > 0) {
       ST.trainings = rawList.map(r => {
@@ -863,78 +955,115 @@ async function syncAll(force) {
           participants:+(r.participants||r.participantCount||ex.participants||0),
           locations:   r.locations||r.location||ex.locations||'—',
           notes:       r.detail||r.remarks||ex.notes||'',
+          // Preserve existing detail data — don't wipe it before lazy load finishes
           apiDetails:  ex.apiDetails||{},
           stepResults: ex.stepResults||{},
-          lastSynced:  null,
+          lastSynced:  ex.lastSynced||null,
           _fromAPI:    true,
           _raw:        r,
         };
       });
-      // Merge in any manually added trainings not in API
-      Object.values(localMap).forEach(lt=>{
-        if (!ST.trainings.find(t=>t.id===lt.id)) ST.trainings.push(lt);
+      Object.values(localMap).forEach(lt => {
+        if (!ST.trainings.find(t => t.id === lt.id)) ST.trainings.push(lt);
       });
     }
 
     if (!ST.trainings.length) {
-      toast('No trainings returned from API — proxy may be unreachable or API returned empty', 'e');
-      hideLoad(); if(sl) sl.style.display='none'; renderAll(); return;
+      toast('No trainings returned — check proxy & API key', 'e');
+      if (bar) bar.style.display='none';
+      if (sl) sl.style.display='none';
+      renderAll(); return;
     }
 
-    // 3. Per-training detail calls
-    let skipped = 0;
-    for (let i=0; i<ST.trainings.length; i++) {
-      const t = ST.trainings[i];
+    // ── PHASE 2: Render immediately with what we have ──────────────────────────
+    if (fill) fill.style.width = '25%';
+    hideLoad(); // hide full-screen loader — show inline progress from here
+    renderAll();
+    renderSkeletonRows(); // show skeleton placeholders for unsynced trainings
+    toast(`${ST.trainings.length} trainings loaded — syncing details...`, 'i');
 
-      // Skip the 5 detail calls entirely if this training was synced recently and
-      // we're not doing a forced full resync — its apiDetails/stepResults are kept as-is.
-      const isFresh = t.lastSynced && (Date.now() - new Date(t.lastSynced).getTime() < STALE_MS);
-      if (isFresh && !force) { skipped++; continue; }
+    // ── PHASE 3: Lazy-load details in batches without blocking the UI ──────────
+    const toSync = ST.trainings.filter(t => {
+      if (force) return true;
+      return !t.lastSynced || (Date.now() - new Date(t.lastSynced).getTime() > STALE_MS);
+    });
 
-      updateLoad(`Syncing ${t.id} (${i+1}/${ST.trainings.length}): ${t.name.substring(0,28)}...`);
+    let done = 0;
+    const total = toSync.length;
 
-      const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
-        safe(EPT.staffMapping(t.id)),
-        safe(EPT.dayBreak(t.id)),
-        safe(EPT.preWork(t.id)),
-        safe(EPT.feedbackMapping(t.id)),
-        safe(EPT.photos(t.id)),
-      ]);
-
-      // Build apiDetails — the grouped raw data shown in detail view
-      t.apiDetails = {
-        staffMapping:    toArr(sfRes.value),
-        dayBreak:        toArr(dbRes.value),
-        preWork:         toArr(pwRes.value),
-        feedbackMapping: toArr(fbRes.value),
-        photos:          toArr(imgRes.value),
-        // Global data injected per-training for validators
-        activityCalendar: ST.globalData.activityCalendar,
-        questionBank:     ST.globalData.questionBank,
-      };
-
-      // Run all 9 trackable validations
-      t.stepResults = {};
-      for (const step of TRACKABLE) {
-        try { t.stepResults[step.code] = step.validate(t, t.apiDetails); }
-        catch(e) { t.stepResults[step.code] = fail(`Validator error: ${e.message}`); }
-      }
-      t.lastSynced = new Date().toISOString();
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      const batch = toSync.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(t => syncTrainingDetail(t)));
+      done += batch.length;
+      const pct = Math.round(25 + (done / total) * 70);
+      if (fill) fill.style.width = pct + '%';
+      updateLoad(`Syncing details: ${done}/${total}...`);
+      // Re-render after each batch so UI updates progressively
+      renderAll();
     }
-    if (skipped) console.log(`[TCT] syncAll — skipped ${skipped} recently-synced training(s), saved ${skipped*5} calls`);
 
+    if (fill) fill.style.width = '100%';
     saveST();
     renderAll();
-    toast(`Loaded ${ST.trainings.length} trainings${skipped ? ` (${skipped} cached)` : ''} ✓`, 's');
+    if (document.getElementById('page-daily')?.classList.contains('active')) renderDailyReport();
+    const skipped = ST.trainings.length - total;
+    toast(`Sync complete — ${total} updated${skipped ? `, ${skipped} cached` : ''} ✓`, 's');
+
   } catch(e) {
-    console.error(e);
-    toast('Sync failed — '+e.message, 'e');
+    console.error('[TCT] syncAll error:', e);
+    toast('Sync failed — ' + e.message, 'e');
     renderAll();
   } finally {
-    hideLoad();
-    if (sl) sl.style.display='none';
+    if (sl) sl.style.display = 'none';
+    setTimeout(() => { if (bar) bar.style.display = 'none'; }, 600);
   }
 }
+
+// Fetch detail endpoints for a single training and run validations
+async function syncTrainingDetail(t) {
+  try {
+    const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
+      safe(EPT.staffMapping(t.id)),
+      safe(EPT.dayBreak(t.id)),
+      safe(EPT.preWork(t.id)),
+      safe(EPT.feedbackMapping(t.id)),
+      safe(EPT.photos(t.id)),
+    ]);
+    t.apiDetails = {
+      staffMapping:    toArr(sfRes.value),
+      dayBreak:        toArr(dbRes.value),
+      preWork:         toArr(pwRes.value),
+      feedbackMapping: toArr(fbRes.value),
+      photos:          toArr(imgRes.value),
+      activityCalendar:ST.globalData.activityCalendar,
+      questionBank:    ST.globalData.questionBank,
+    };
+    t.stepResults = {};
+    for (const step of TRACKABLE) {
+      try { t.stepResults[step.code] = step.validate(t, t.apiDetails); }
+      catch(e) { t.stepResults[step.code] = fail(`Validator error: ${e.message}`); }
+    }
+    t.lastSynced = new Date().toISOString();
+  } catch(e) {
+    console.warn('[TCT] detail sync failed for', t.id, e.message);
+  }
+}
+
+// Show skeleton placeholder rows for trainings not yet synced
+function renderSkeletonRows() {
+  const tbody = document.getElementById('trainBody');
+  if (!tbody) return;
+  const unsynced = ST.trainings.filter(t => !t.lastSynced);
+  if (!unsynced.length) return;
+  // Append skeleton rows after real rows
+  const skelHtml = unsynced.slice(0,5).map(() => `
+    <tr class="skel-row">
+      ${Array(11).fill(0).map(() => `<td><div class="skel-cell skel-w80"></div></td>`).join('')}
+    </tr>`).join('');
+  tbody.insertAdjacentHTML('beforeend', skelHtml);
+}
+
+
 
 // ═══════════════════════════════════════════════════════════════
 // COMPLIANCE CALC
@@ -965,6 +1094,7 @@ function renderAll() {
   renderTrainings();
   renderCompliance();
   renderDeviations();
+  renderDailyReport();
   const synced = ST.trainings.filter(t=>t.lastSynced).length;
   const sub = document.getElementById('dashSub');
   if (sub) sub.textContent = `${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} · ${ST.trainings.length} trainings · ${synced} synced`;
@@ -1392,6 +1522,285 @@ function renderStepsTable() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DAILY REPORT
+// ═══════════════════════════════════════════════════════════════
+
+function getDailyTrainings() {
+  const today     = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const fmt = d => d.toISOString().slice(0,10);
+  const todayStr     = fmt(today);
+  const yesterdayStr = fmt(yesterday);
+  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
+
+  return ST.trainings.filter(t => {
+    const s = t.startDate; const e = t.endDate;
+    const matchToday     = s <= todayStr     && e >= todayStr;
+    const matchYesterday = s <= yesterdayStr && e >= yesterdayStr;
+    if (filter === 'today')     return matchToday;
+    if (filter === 'yesterday') return matchYesterday;
+    return matchToday || matchYesterday;
+  });
+}
+
+// Extract all fields needed for the daily report row
+function getDailyRow(t, idx) {
+  const ad = t.apiDetails || {};
+  const staff = ad.staffMapping || [];
+  const db    = ad.dayBreak    || [];
+  const fb    = ad.feedbackMapping || [];
+
+  // Lead name — Training-Observer or from activity calendar
+  const observer = staff.find(s => s.staffType === 'Training-Observer');
+  const calEntry = (ad.activityCalendar||[]).find(a => {
+    const an = (a.actName||'').toLowerCase();
+    const words = (t.name||'').toLowerCase().split(' ').filter(w=>w.length>3).slice(0,3);
+    return words.some(w => an.includes(w));
+  });
+  const leadName = observer?.staffName
+    || calEntry?.verticalLeadName
+    || calEntry?.leadName
+    || t._raw?.leadName
+    || t._raw?.verticalLead
+    || '—';
+
+  // Trainer name + phone — Master-Trainer
+  const trainer = staff.find(s => s.staffType === 'Master-Trainer');
+  const trainerDisplay = trainer
+    ? `${trainer.staffName}${trainer.staffPhno ? ' - '+trainer.staffPhno : ''}`
+    : (t._raw?.trainerName || '—');
+
+  // Timing — from dayBreak, pick entry matching today/yesterday
+  const today = new Date().toISOString().slice(0,10);
+  const yest  = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const dbEntry = db.find(d => d.trainingDate===today || d.trainingDate===yest) || db[0];
+  const timing = dbEntry && dbEntry.startTime
+    ? `${dbEntry.startTime} TO ${dbEntry.endTime || '—'}`
+    : (t._raw?.timing || t._raw?.time || '—');
+
+  // Timing colour class
+  const startH = dbEntry?.startTime ? parseInt(dbEntry.startTime.split(':')[0]) : -1;
+  const timingCls = startH < 0 ? '' : startH < 12 ? 'm' : startH < 15 ? 'a' : startH < 18 ? 'e' : 'n';
+
+  // Activity calendar code
+  const actCode = calEntry?.actId || calEntry?.actCode
+    || t._raw?.activityCalendarCode || t._raw?.actId
+    || t.locations || '—';
+
+  // Attendance
+  const expected = t.trainees    || 0;
+  const present  = t.participants || 0;
+  const absent   = Math.max(0, expected - present);
+
+  // Absent reason — from dayBreak or raw
+  const absentReasons = db
+    .filter(d => d.absentReason || d.absentReasonList)
+    .map(d => d.absentReason || d.absentReasonList)
+    .join('; ');
+  const absentReason = absentReasons || t._raw?.absentReason || '—';
+
+  // Feedback
+  const fbReceived   = fb.filter(f => f.feedbackStatus === 'Completed' || f.completed || f.responseCount > 0).length
+    || t._raw?.feedbackReceivedCount || 0;
+  const fbNotSubmitted = Math.max(0, expected - fbReceived);
+
+  return { idx, leadName, name:t.name, actCode, id:t.id, trainerDisplay, timing, timingCls,
+           expected, present, absent, absentReason, fbReceived, fbNotSubmitted, t };
+}
+
+function renderDailyReport() {
+  const list = getDailyTrainings();
+  const tbody = document.getElementById('dailyBody');
+  if (!tbody) return;
+
+  const today = new Date();
+  const yest  = new Date(Date.now()-86400000);
+  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
+  const dateLabel = filter==='today'
+    ? today.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})
+    : filter==='yesterday'
+    ? yest.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})
+    : `${yest.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} – ${today.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`;
+
+  const sub = document.getElementById('dailySubtitle');
+  if (sub) sub.textContent = `${dateLabel} — ${list.length} training(s)`;
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="empty">No trainings scheduled for today or yesterday</td></tr>';
+    // Zero out summary
+    ['dr-total','dr-present','dr-expected','dr-absent','dr-fb','dr-fbpend'].forEach(id => set(id, '0'));
+    return;
+  }
+
+  const rows = list.map((t,i) => getDailyRow(t, i+1));
+
+  // Summary totals
+  const totExp  = rows.reduce((a,r) => a+r.expected,       0);
+  const totPres = rows.reduce((a,r) => a+r.present,        0);
+  const totAbs  = rows.reduce((a,r) => a+r.absent,         0);
+  const totFb   = rows.reduce((a,r) => a+r.fbReceived,     0);
+  const totFbP  = rows.reduce((a,r) => a+r.fbNotSubmitted, 0);
+  set('dr-total',    list.length);
+  set('dr-present',  totPres);
+  set('dr-expected', totExp);
+  set('dr-absent',   totAbs);
+  set('dr-fb',       totFb);
+  set('dr-fbpend',   totFbP);
+
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td style="font-weight:700;text-align:center;">${r.idx}</td>
+    <td style="font-weight:600;">${r.leadName}</td>
+    <td style="max-width:180px;">${r.name}</td>
+    <td><span class="tid">${r.actCode}</span></td>
+    <td><span class="tid">${r.id}</span></td>
+    <td style="font-size:.72rem;">${r.trainerDisplay}</td>
+    <td>${r.timing !== '—' ? `<span class="dr-timing ${r.timingCls}">${r.timing}</span>` : '—'}</td>
+    <td style="text-align:center;font-weight:600;">${r.expected}</td>
+    <td style="text-align:center;font-weight:600;color:var(--gn);">${r.present}</td>
+    <td style="text-align:center;font-weight:700;color:${r.absent>0?'var(--rd)':'var(--gn)'};">${r.absent}</td>
+    <td style="font-size:.7rem;color:var(--t2);max-width:160px;">${r.absentReason}</td>
+    <td style="text-align:center;">${r.fbReceived}</td>
+    <td style="text-align:center;color:${r.fbNotSubmitted>0?'var(--rd)':'var(--gn)'};">${r.fbNotSubmitted}</td>
+  </tr>`).join('');
+}
+
+// ── DAILY REPORT — EXCEL DOWNLOAD ─────────────────────────────
+function downloadDailyExcel() {
+  const list = getDailyTrainings();
+  if (!list.length) { toast('No trainings to export', 'e'); return; }
+  const rows = list.map((t,i) => getDailyRow(t,i+1));
+
+  const headers = ['S.No','Lead Name','Subject / Class / Batch','Activity Calendar Code',
+    'Training ID','Trainer Name & Phone Number','Timing',
+    'Expectation Count','Present Count','Absent Count',
+    'Absent Reason','Feedback Received Count','Feedback Not Submitted Count'];
+
+  const data = rows.map(r => [
+    r.idx, r.leadName, r.name, r.actCode, r.id,
+    r.trainerDisplay, r.timing,
+    r.expected, r.present, r.absent,
+    r.absentReason, r.fbReceived, r.fbNotSubmitted,
+  ]);
+
+  // Build CSV (works without any library)
+  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+  const csv = [headers, ...data].map(row => row.map(escape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `Daily_Training_Report_${date}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Excel/CSV downloaded ✓', 's');
+}
+
+// ── DAILY REPORT — PDF DOWNLOAD ────────────────────────────────
+function downloadDailyPDF() {
+  const list = getDailyTrainings();
+  if (!list.length) { toast('No trainings to export', 'e'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+  const now  = new Date();
+  const rows = list.map((t,i) => getDailyRow(t,i+1));
+  const filter = document.getElementById('dailyDateFilter')?.value || 'both';
+
+  // Header
+  doc.setFillColor(10,15,30); doc.rect(0,0,420,22,'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('ACADEMIC TRAINING UPDATE',14,10);
+  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(148,163,184);
+  doc.text(`Date: ${now.toLocaleDateString('en-IN',{day:'2-digit',month:'2-digit',year:'numeric'})}`,14,17);
+  doc.setTextColor(0,212,255); doc.setFontSize(9);
+  doc.text(`TOTAL TRAININGS: ${list.length}`,360,10);
+  doc.text(`Generated: ${now.toLocaleTimeString('en-IN')}`,360,17);
+
+  // Summary row
+  const totExp  = rows.reduce((a,r)=>a+r.expected,0);
+  const totPres = rows.reduce((a,r)=>a+r.present,0);
+  const totAbs  = rows.reduce((a,r)=>a+r.absent,0);
+  const totFb   = rows.reduce((a,r)=>a+r.fbReceived,0);
+  const totFbP  = rows.reduce((a,r)=>a+r.fbNotSubmitted,0);
+
+  let y = 26;
+  doc.setFontSize(7.5); doc.setFont(undefined,'normal');
+  const summaryBoxes = [
+    {l:'Expected',v:totExp,c:[0,150,200]},{l:'Present',v:totPres,c:[16,185,129]},
+    {l:'Absent',v:totAbs,c:[239,68,68]},{l:'Feedback Received',v:totFb,c:[124,58,237]},
+    {l:'Feedback Pending',v:totFbP,c:[245,158,11]},
+  ];
+  summaryBoxes.forEach((b,i) => {
+    const bx=14+i*44;
+    doc.setDrawColor(...b.c); doc.setFillColor(20,25,40);
+    doc.roundedRect(bx,y,40,11,1,1,'FD');
+    doc.setTextColor(...b.c); doc.setFontSize(11); doc.setFont(undefined,'bold');
+    doc.text(String(b.v),bx+20,y+7,{align:'center'});
+    doc.setTextColor(180,180,180); doc.setFontSize(5.5); doc.setFont(undefined,'normal');
+    doc.text(b.l,bx+20,y+10.5,{align:'center'});
+  });
+  y += 16;
+
+  // Main table
+  doc.autoTable({
+    head:[['S.No','Lead Name','Subject / Class / Batch','Act.Cal Code','Training ID',
+           'Trainer Name & Phone','Timing','Expected','Present','Absent',
+           'Absent Reason','FB Received','FB Not Submitted']],
+    body: rows.map(r=>[
+      r.idx, r.leadName, r.name, r.actCode, r.id,
+      r.trainerDisplay, r.timing,
+      r.expected, r.present, r.absent,
+      r.absentReason, r.fbReceived, r.fbNotSubmitted,
+    ]),
+    startY: y,
+    styles: { font:'helvetica', fontSize:6.5, cellPadding:2 },
+    headStyles: { fillColor:[26,34,53], textColor:[180,195,220], fontStyle:'bold', fontSize:6.5 },
+    columnStyles: {
+      0:{cellWidth:8,  halign:'center'},
+      1:{cellWidth:22},
+      2:{cellWidth:38},
+      3:{cellWidth:18, fontStyle:'bold', textColor:[0,150,200]},
+      4:{cellWidth:16, fontStyle:'bold', textColor:[0,150,200]},
+      5:{cellWidth:38},
+      6:{cellWidth:24},
+      7:{cellWidth:14, halign:'center', fontStyle:'bold'},
+      8:{cellWidth:14, halign:'center', fontStyle:'bold'},
+      9:{cellWidth:12, halign:'center', fontStyle:'bold'},
+      10:{cellWidth:42},
+      11:{cellWidth:16, halign:'center'},
+      12:{cellWidth:20, halign:'center'},
+    },
+    alternateRowStyles: { fillColor:[22,32,50] },
+    didDrawCell(d) {
+      if (d.column.index === 9 && d.section === 'body') {
+        const v = Number(d.cell.text[0]);
+        if (v > 0) doc.setTextColor(239,68,68);
+        else doc.setTextColor(16,185,129);
+      }
+      if (d.column.index === 12 && d.section === 'body') {
+        const v = Number(d.cell.text[0]);
+        if (v > 0) doc.setTextColor(245,158,11);
+        else doc.setTextColor(16,185,129);
+      }
+    },
+    margin: { left:14, right:14 },
+    theme: 'grid',
+  });
+
+  // Footer
+  const pages = doc.internal.getNumberOfPages();
+  for (let i=1; i<=pages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(6.5); doc.setTextColor(120,120,120);
+    doc.text(`Daily Training Report | ${now.toLocaleDateString('en-IN')} | Generated by Training Compliance Tracker`, 14, 197);
+    doc.text(`⚠️ Daily Report must be submitted by Training Team (Maha/Anitha) without fail`, 14, 201);
+    doc.text(`${i}/${pages}`, 406, 201, {align:'right'});
+  }
+
+  const dateStr = now.toISOString().slice(0,10);
+  doc.save(`Daily_Training_Report_${dateStr}.pdf`);
+  toast('Daily report PDF downloaded ✓', 's');
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PDF REPORT
 // ═══════════════════════════════════════════════════════════════
 function genPDF() {
@@ -1569,35 +1978,14 @@ function saveTraining() {
 }
 
 async function syncSingleTraining(id) {
-  const t = ST.trainings.find(x=>x.id===id);
+  const t = ST.trainings.find(x => x.id === id);
   if (!t) return;
   try {
-    const [sfRes, dbRes, pwRes, fbRes, imgRes] = await Promise.allSettled([
-      safe(EPT.staffMapping(id)),
-      safe(EPT.dayBreak(id)),
-      safe(EPT.preWork(id)),
-      safe(EPT.feedbackMapping(id)),
-      safe(EPT.photos(id)),
-    ]);
-    t.apiDetails = {
-      staffMapping:     toArr(sfRes.value),
-      dayBreak:         toArr(dbRes.value),
-      preWork:          toArr(pwRes.value),
-      feedbackMapping:  toArr(fbRes.value),
-      photos:           toArr(imgRes.value),
-      activityCalendar: ST.globalData.activityCalendar||[],
-      questionBank:     ST.globalData.questionBank||[],
-    };
-    t.stepResults = {};
-    for (const step of TRACKABLE) {
-      try { t.stepResults[step.code] = step.validate(t, t.apiDetails); }
-      catch(e) { t.stepResults[step.code] = fail(`Validator error: ${e.message}`); }
-    }
-    t.lastSynced = new Date().toISOString();
+    await syncTrainingDetail(t);
     saveST(); renderAll();
-    toast(`Sync complete for training ${id}`,'s');
+    toast(`Sync complete for training ${id}`, 's');
   } catch(e) {
-    toast(`Detail sync failed for ${id}: ${e.message}`,'e');
+    toast(`Detail sync failed for ${id}: ${e.message}`, 'e');
   }
 }
 function delT(id) {
