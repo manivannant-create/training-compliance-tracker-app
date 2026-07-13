@@ -968,11 +968,11 @@ async function syncAll(force) {
         const ex = localMap[id]||{};
 
         // Capture ALL known date field names the API might use
-        const rawStart = r.t_start||r.startDate||r.start_date||r.fromDate||r.trainingStartDate||r.training_start||r.date||ex.startDate||'';
-        const rawEnd   = r.t_end  ||r.endDate  ||r.end_date  ||r.toDate  ||r.trainingEndDate  ||r.training_end  ||rawStart||ex.endDate||'';
+        const rawStart = String(r.t_start||r.startDate||r.start_date||r.fromDate||r.trainingStartDate||r.training_start||r.date||ex.startDate||'');
+        const rawEnd   = String(r.t_end  ||r.endDate  ||r.end_date  ||r.toDate  ||r.trainingEndDate  ||r.training_end  ||rawStart||ex.endDate||'');
 
-        // Capture ALL known name field names
-        const rawName  = r.name||r.trainingName||r.training_name||r.title||r.subject||r.subjectName||r.actName||ex.name||'';
+        // Capture ALL known name field names — coerce to string safely
+        const rawName  = String(r.name||r.trainingName||r.training_name||r.title||r.subject||r.subjectName||r.actName||ex.name||'');
 
         // Log any training with no name or dates — helps debug
         if (!rawName || !rawStart) console.warn('[TCT] mapping gap — id:', id, '| keys:', Object.keys(r).join(', '), '| sample:', JSON.stringify(r).substring(0,200));
