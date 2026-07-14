@@ -253,7 +253,7 @@ textarea{resize:vertical;min-height:60px;}
     <div class="tbr">
       <span class="badge bac">⬤ LIVE</span>
       <span class="badge brd" id="riskBadge">— AT RISK</span>
-      <button class="btn bts sm" onclick="syncAll()" title="Quick sync — skips trainings synced in the last 15 min">🔄 Sync</button>
+      <button class="btn bts sm" onclick="syncDashboard()" title="Quick sync — only loads trainings in the Dashboard's selected date range">🔄 Sync</button>
       <button class="btn btg sm" onclick="genPDF()">📄 PDF</button>
       <button class="btn bts ic" onclick="openSettings()" title="Proxy Settings">⚙️</button>
       <div class="upill"><div class="av">TL</div><span id="userLabel">Training Lead</span></div>
@@ -283,7 +283,19 @@ textarea{resize:vertical;min-height:60px;}
       <div class="page active" id="page-dashboard">
         <div class="sh">
           <div><div class="stl">Dashboard</div><div class="sub" id="dashSub">Loading...</div></div>
-          <button class="btn btp sm" onclick="syncAll(true)" title="Force full resync of every training"><span class="ld" id="syncLd" style="display:none;"></span> 🔄 Sync All</button>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <label style="font-size:.72rem;color:var(--t2);">From:</label>
+              <input type="date" id="dashFromDate" class="bts sm" onchange="onDashRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <label style="font-size:.72rem;color:var(--t2);">To:</label>
+              <input type="date" id="dashToDate" class="bts sm" onchange="onDashRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <button class="btn bts sm" onclick="setDashRangePreset('today')" style="font-size:.68rem;padding:5px 9px;">Today</button>
+              <button class="btn bts sm" onclick="setDashRangePreset('tomorrow')" style="font-size:.68rem;padding:5px 9px;">Tomorrow</button>
+              <button class="btn bts sm" onclick="setDashRangePreset('week')" style="font-size:.68rem;padding:5px 9px;">Next 7 Days</button>
+              <button class="btn bts sm" onclick="setDashRangePreset('all')" style="font-size:.68rem;padding:5px 9px;" title="Show/sync every training, no date filter">All</button>
+            </div>
+            <button class="btn btp sm" onclick="syncAll(true)" title="Force full resync of every training — ignores date filter and cache"><span class="ld" id="syncLd" style="display:none;"></span> 🔄 Sync All</button>
+          </div>
         </div>
         <!-- Daily banner -->
         <div class="dbanner">
@@ -873,8 +885,9 @@ async function launchApp() {
   renderStepsTable();
   // If we have cached trainings, render them immediately while sync runs
   if (ST.trainings.length) renderAll();
-  // Then sync fresh data in background
-  await syncAll();
+  // Then sync fresh data in background — scoped to the Dashboard's date range by
+  // default. Full "load everything" only happens via the explicit Sync All button.
+  await syncDashboard();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -931,124 +944,165 @@ function toArr(v) {
 // ── LAZY SYNC — shows UI after step 1, loads details in background ───────────
 const BATCH_SIZE = 3; // fetch details for N trainings concurrently
 
-async function syncAll(force) {
-  const sl = document.getElementById('syncLd'); if (sl) sl.style.display = 'inline-block';
-  const bar = document.getElementById('syncBar');
+// Phase 1 — fetch the training list + global reference data (3 lightweight calls).
+// Shared by both the full "Sync All" and the date-scoped dashboard sync.
+async function fetchGlobalAndTrainingList() {
+  updateLoad('Fetching training list...');
+
+  const [trainRes, calRes, qbRes] = await Promise.allSettled([
+    safe(EP.allTrainings),
+    safe(EP.activityCal),
+    safe(EP.questionBank),
+  ]);
+
+  ST.globalData = {
+    activityCalendar: toArr(calRes.value),
+    questionBank:     toArr(qbRes.value),
+  };
+
+  // Build training list from R1
+  const rawList = toArr(trainRes.value);
+  console.log('[TCT] R1 raw:', JSON.stringify(trainRes.value)?.substring(0,400));
+  console.log('[TCT] R1 parsed:', rawList.length, 'records | keys:', rawList[0] ? Object.keys(rawList[0]).join(', ') : 'none');
+  if (rawList[0]) console.log('[TCT] R1 first record:', JSON.stringify(rawList[0]));
+
+  const localMap = {};
+  (ST.trainings||[]).forEach(t => { localMap[String(t.id)] = t; });
+
+  if (rawList.length > 0) {
+    ST.trainings = rawList.map(r => {
+      const id = String(r.id||r.trainingId||'');
+      const ex = localMap[id]||{};
+
+      // Capture ALL known date field names the API might use
+      const rawStart = String(r.t_start||r.startDate||r.start_date||r.fromDate||r.trainingStartDate||r.training_start||r.date||ex.startDate||'');
+      const rawEnd   = String(r.t_end  ||r.endDate  ||r.end_date  ||r.toDate  ||r.trainingEndDate  ||r.training_end  ||rawStart||ex.endDate||'');
+
+      // Capture ALL known name field names — coerce to string safely
+      const rawName  = String(r.name||r.trainingName||r.training_name||r.title||r.subject||r.subjectName||r.actName||ex.name||'');
+
+      // Log any training with no name or dates — helps debug
+      if (!rawName || !rawStart) console.warn('[TCT] mapping gap — id:', id, '| keys:', Object.keys(r).join(', '), '| sample:', JSON.stringify(r).substring(0,200));
+
+      return {
+        id,
+        name:        rawName.trim() || `Training ${id}`,
+        type:        r.type||r.trainingType||r.training_type||ex.type||'Academic',
+        startDate:   nd(rawStart),
+        endDate:     nd(rawEnd) || nd(rawStart), // fallback: same-day training
+        status:      r.completion_status||r.status||r.trainingStatus||ex.status||'pending',
+        trainees:    +(r.trainees||r.traineeCount||r.expectedCount||r.expectation_count||ex.trainees||0),
+        participants:+(r.participants||r.participantCount||r.presentCount||r.present_count||ex.participants||0),
+        locations:   r.locations||r.location||r.venue||ex.locations||'—',
+        notes:       r.detail||r.remarks||r.notes||ex.notes||'',
+        apiDetails:  ex.apiDetails||{},
+        stepResults: ex.stepResults||{},
+        lastSynced:  ex.lastSynced||null,
+        _fromAPI:    true,
+        _raw:        r,
+      };
+    });
+    Object.values(localMap).forEach(lt => {
+      if (!ST.trainings.find(t => t.id === lt.id)) ST.trainings.push(lt);
+    });
+  }
+  return ST.trainings.length > 0;
+}
+
+// Phase 2/3 — lazily load per-training details (5 calls each) for the given subset,
+// in small concurrent batches, respecting the staleness cache unless force=true.
+async function lazySyncDetails(scope, force) {
+  const bar  = document.getElementById('syncBar');
   const fill = document.getElementById('syncBarFill');
   if (bar) bar.style.display = 'block';
-  if (fill) fill.style.width = '0%';
+  if (fill) fill.style.width = '25%';
 
+  const toSync = scope.filter(t => {
+    if (force) return true;
+    return !t.lastSynced || (Date.now() - new Date(t.lastSynced).getTime() > STALE_MS);
+  });
+
+  let done = 0;
+  const total = toSync.length;
+
+  for (let i = 0; i < total; i += BATCH_SIZE) {
+    const batch = toSync.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(t => syncTrainingDetail(t)));
+    done += batch.length;
+    const pct = Math.round(25 + (done / total) * 70);
+    if (fill) fill.style.width = pct + '%';
+    updateLoad(`Syncing details: ${done}/${total}...`);
+    renderAll(); // progressive UI update after each batch
+  }
+
+  if (fill) fill.style.width = '100%';
+  saveST();
+  renderAll();
+  if (document.getElementById('page-daily')?.classList.contains('active')) renderDailyReport();
+  return { total, skipped: scope.length - total };
+}
+
+// FULL sync — every training in the system, ignoring the dashboard date filter and
+// (when force=true) the staleness cache too. This is the original "load everything"
+// behavior, now reserved for the explicit "Sync All" button only.
+async function syncAll(force) {
+  const sl = document.getElementById('syncLd'); if (sl) sl.style.display = 'inline-block';
   console.log('[TCT] syncAll — token:', ST.token ? ST.token.substring(0,30)+'...' : 'MISSING');
   try {
-    // ── PHASE 1: Fetch training list + global data (fast — 3 parallel calls) ──
-    updateLoad('Fetching training list...');
-    if (fill) fill.style.width = '10%';
-
-    const [trainRes, calRes, qbRes] = await Promise.allSettled([
-      safe(EP.allTrainings),
-      safe(EP.activityCal),
-      safe(EP.questionBank),
-    ]);
-
-    ST.globalData = {
-      activityCalendar: toArr(calRes.value),
-      questionBank:     toArr(qbRes.value),
-    };
-
-    // Build training list from R1
-    const rawList = toArr(trainRes.value);
-    console.log('[TCT] R1 raw:', JSON.stringify(trainRes.value)?.substring(0,400));
-    console.log('[TCT] R1 parsed:', rawList.length, 'records | keys:', rawList[0] ? Object.keys(rawList[0]).join(', ') : 'none');
-    if (rawList[0]) console.log('[TCT] R1 first record:', JSON.stringify(rawList[0]));
-
-    const localMap = {};
-    (ST.trainings||[]).forEach(t => { localMap[String(t.id)] = t; });
-
-    if (rawList.length > 0) {
-      ST.trainings = rawList.map(r => {
-        const id = String(r.id||r.trainingId||'');
-        const ex = localMap[id]||{};
-
-        // Capture ALL known date field names the API might use
-        const rawStart = String(r.t_start||r.startDate||r.start_date||r.fromDate||r.trainingStartDate||r.training_start||r.date||ex.startDate||'');
-        const rawEnd   = String(r.t_end  ||r.endDate  ||r.end_date  ||r.toDate  ||r.trainingEndDate  ||r.training_end  ||rawStart||ex.endDate||'');
-
-        // Capture ALL known name field names — coerce to string safely
-        const rawName  = String(r.name||r.trainingName||r.training_name||r.title||r.subject||r.subjectName||r.actName||ex.name||'');
-
-        // Log any training with no name or dates — helps debug
-        if (!rawName || !rawStart) console.warn('[TCT] mapping gap — id:', id, '| keys:', Object.keys(r).join(', '), '| sample:', JSON.stringify(r).substring(0,200));
-
-        return {
-          id,
-          name:        rawName.trim() || `Training ${id}`,
-          type:        r.type||r.trainingType||r.training_type||ex.type||'Academic',
-          startDate:   nd(rawStart),
-          endDate:     nd(rawEnd) || nd(rawStart), // fallback: same-day training
-          status:      r.completion_status||r.status||r.trainingStatus||ex.status||'pending',
-          trainees:    +(r.trainees||r.traineeCount||r.expectedCount||r.expectation_count||ex.trainees||0),
-          participants:+(r.participants||r.participantCount||r.presentCount||r.present_count||ex.participants||0),
-          locations:   r.locations||r.location||r.venue||ex.locations||'—',
-          notes:       r.detail||r.remarks||r.notes||ex.notes||'',
-          apiDetails:  ex.apiDetails||{},
-          stepResults: ex.stepResults||{},
-          lastSynced:  ex.lastSynced||null,
-          _fromAPI:    true,
-          _raw:        r,
-        };
-      });
-      Object.values(localMap).forEach(lt => {
-        if (!ST.trainings.find(t => t.id === lt.id)) ST.trainings.push(lt);
-      });
-    }
-
-    if (!ST.trainings.length) {
+    const ok = await fetchGlobalAndTrainingList();
+    if (!ok) {
       toast('No trainings returned — check proxy & API key', 'e');
-      if (bar) bar.style.display='none';
-      if (sl) sl.style.display='none';
+      const bar = document.getElementById('syncBar'); if (bar) bar.style.display = 'none';
       renderAll(); return;
     }
 
-    // ── PHASE 2: Render immediately with what we have ──────────────────────────
-    if (fill) fill.style.width = '25%';
-    hideLoad(); // hide full-screen loader — show inline progress from here
+    hideLoad();
     renderAll();
-    renderSkeletonRows(); // show skeleton placeholders for unsynced trainings
+    renderSkeletonRows();
     toast(`${ST.trainings.length} trainings loaded — syncing details...`, 'i');
 
-    // ── PHASE 3: Lazy-load details in batches without blocking the UI ──────────
-    const toSync = ST.trainings.filter(t => {
-      if (force) return true;
-      return !t.lastSynced || (Date.now() - new Date(t.lastSynced).getTime() > STALE_MS);
-    });
-
-    let done = 0;
-    const total = toSync.length;
-
-    for (let i = 0; i < total; i += BATCH_SIZE) {
-      const batch = toSync.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(t => syncTrainingDetail(t)));
-      done += batch.length;
-      const pct = Math.round(25 + (done / total) * 70);
-      if (fill) fill.style.width = pct + '%';
-      updateLoad(`Syncing details: ${done}/${total}...`);
-      // Re-render after each batch so UI updates progressively
-      renderAll();
-    }
-
-    if (fill) fill.style.width = '100%';
-    saveST();
-    renderAll();
-    if (document.getElementById('page-daily')?.classList.contains('active')) renderDailyReport();
-    const skipped = ST.trainings.length - total;
+    const { total, skipped } = await lazySyncDetails(ST.trainings, force);
     toast(`Sync complete — ${total} updated${skipped ? `, ${skipped} cached` : ''} ✓`, 's');
-
   } catch(e) {
     console.error('[TCT] syncAll error:', e);
     toast('Sync failed — ' + e.message, 'e');
     renderAll();
   } finally {
     if (sl) sl.style.display = 'none';
+    const bar = document.getElementById('syncBar');
+    setTimeout(() => { if (bar) bar.style.display = 'none'; }, 600);
+  }
+}
+
+// SCOPED sync — the default path, used on login and the quick "Sync" button. Always
+// fetches the lightweight global data + full R1 training list (3 calls), but only
+// lazy-loads per-training details (5 calls each) for trainings whose dates fall
+// inside the currently selected Dashboard date range — not every training.
+async function syncDashboard() {
+  try {
+    const ok = await fetchGlobalAndTrainingList();
+    if (!ok) {
+      toast('No trainings returned — check proxy & API key', 'e');
+      renderAll(); return;
+    }
+
+    hideLoad();
+    initDashRangeDefaults();
+    renderAll();
+    renderSkeletonRows();
+
+    const scope = getDashTrainings();
+    toast(`${ST.trainings.length} trainings loaded — syncing ${scope.length} in range...`, 'i');
+
+    const { total, skipped } = await lazySyncDetails(scope, false);
+    const outOfRange = ST.trainings.length - scope.length;
+    toast(`Sync complete — ${total} updated${skipped ? `, ${skipped} cached` : ''}${outOfRange ? `, ${outOfRange} outside range not loaded` : ''} ✓`, 's');
+  } catch(e) {
+    console.error('[TCT] syncDashboard error:', e);
+    toast('Sync failed — ' + e.message, 'e');
+    renderAll();
+  } finally {
+    const bar = document.getElementById('syncBar');
     setTimeout(() => { if (bar) bar.style.display = 'none'; }, 600);
   }
 }
@@ -1129,14 +1183,20 @@ function renderAll() {
   renderCompliance();
   renderDeviations();
   renderDailyReport();
-  const synced = ST.trainings.filter(t=>t.lastSynced).length;
+  const scope = getDashTrainings();
+  const synced = scope.filter(t=>t.lastSynced).length;
+  const { from, to } = getDashRange();
+  const fLbl = d => new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const rangeLabel = (!from && !to) ? 'All trainings'
+    : (from===to ? fLbl(from||to) : `${from?fLbl(from):'…'} – ${to?fLbl(to):'…'}`);
   const sub = document.getElementById('dashSub');
-  if (sub) sub.textContent = `${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} · ${ST.trainings.length} trainings · ${synced} synced`;
+  if (sub) sub.textContent = `${rangeLabel} · ${scope.length} in range · ${synced} synced`;
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────
 function renderDashboard() {
-  const data=ST.trainings.map(t=>({t,c:calc(t)}));
+  initDashRangeDefaults();
+  const data=getDashTrainings().map(t=>({t,c:calc(t)}));
   const n=data.length;
   const avg=n?Math.round(data.reduce((a,d)=>a+d.c.pct,0)/n):0;
   const compliant=data.filter(d=>d.c.pct===100).length;
@@ -1158,7 +1218,7 @@ function renderDashboard() {
   const sorted=[...data].sort((a,b)=>a.c.pct-b.c.pct).slice(0,12);
   document.getElementById('dashBody').innerHTML=sorted.length
     ?sorted.map(({t,c})=>buildRow(t,c,false)).join('')
-    :'<tr><td colspan="9" class="empty">No trainings — click Sync</td></tr>';
+    :'<tr><td colspan="9" class="empty">No trainings in selected date range</td></tr>';
 }
 
 // ── TRAININGS TABLE ────────────────────────────────────────────
@@ -1200,8 +1260,15 @@ function buildRow(t,c,full) {
 }
 
 // ── DETAIL VIEW — two tabs: Steps + grouped API data ──────────
-function viewDetail(id) {
+async function viewDetail(id) {
   const t=ST.trainings.find(x=>x.id===id); if(!t) return;
+  // This training may be outside the Dashboard's synced date range and have no
+  // details yet — fetch them on demand rather than showing an empty modal.
+  if (!t.lastSynced) {
+    toast('Loading training details...', 'i');
+    await syncTrainingDetail(t);
+    saveST();
+  }
   const c=calc(t);
   const bc=barColor(c.risk);
   const ad=t.apiDetails||{};
@@ -1556,7 +1623,7 @@ function renderStepsTable() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DAILY REPORT
+// DAILY REPORTs
 // ═══════════════════════════════════════════════════════════════
 
 function fmtD(d) { return d.toISOString().slice(0,10); }
@@ -1600,25 +1667,71 @@ function initDailyRangeDefaults() {
   if (toEl   && !toEl.value)   toEl.value   = getDailyRange().to;
 }
 
-function getDailyTrainings() {
-  const { from: fromStr, to: toStr } = getDailyRange();
-
-  return ST.trainings.filter(t => {
+// Shared date-range filter — a training is included if its [startDate,endDate] window
+// (or any dayBreak date, for trainings already synced) overlaps [fromStr,toStr].
+// Passing null/empty for fromStr or toStr means "unbounded" on that side.
+function filterByDateRange(list, fromStr, toStr) {
+  const lower = fromStr || '0000-01-01';
+  const upper = toStr   || '9999-12-31';
+  return list.filter(t => {
     const s = t.startDate || '';
-    // If endDate is empty/missing, treat training as single-day (endDate = startDate)
     const e = t.endDate || s;
-
-    // Also check dayBreak dates — some trainings only have dates in schedule, not on R1
     const dbDates = (t.apiDetails?.dayBreak||[]).map(d => nd(d.trainingDate||'')).filter(Boolean);
-    // Overlap test: training's [s,e] window intersects the selected [fromStr,toStr] range
-    const rangeOverlaps = (s && e && s <= toStr && e >= fromStr);
-    const dbInRange = dbDates.some(d => d >= fromStr && d <= toStr);
-
+    const rangeOverlaps = (s && e && s <= upper && e >= lower);
+    const dbInRange = dbDates.some(d => d >= lower && d <= upper);
     // If no dates at all, include so it's visible and user can check
     const noDates = !s && !e && !dbDates.length;
-
     return rangeOverlaps || dbInRange || noDates;
   });
+}
+
+function getDailyTrainings() {
+  const { from, to } = getDailyRange();
+  return filterByDateRange(ST.trainings, from, to);
+}
+
+// ── DASHBOARD DATE RANGE — controls which trainings get their 5 detail calls
+// fetched by default. Blank From/To = unbounded on that side ("All" preset). ──
+function getDashRange() {
+  const fromEl = document.getElementById('dashFromDate');
+  const toEl   = document.getElementById('dashToDate');
+  let from = fromEl?.value || null;
+  let to   = toEl?.value   || null;
+  if (from && to && from > to) { const tmp = from; from = to; to = tmp; }
+  return { from, to };
+}
+
+function getDashTrainings() {
+  const { from, to } = getDashRange();
+  return filterByDateRange(ST.trainings, from, to);
+}
+
+function setDashRangePreset(preset) {
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1);
+  const weekEnd  = new Date(today); weekEnd.setDate(today.getDate()+6);
+  const fromEl = document.getElementById('dashFromDate');
+  const toEl   = document.getElementById('dashToDate');
+  let from, to;
+  if (preset === 'today')          { from = fmtD(today);    to = fmtD(today); }
+  else if (preset === 'tomorrow')  { from = fmtD(tomorrow);  to = fmtD(tomorrow); }
+  else if (preset === 'week')      { from = fmtD(today);     to = fmtD(weekEnd); }
+  else                              { from = '';              to = ''; } // 'all' — unbounded
+  if (fromEl) { fromEl.value = from; fromEl.dataset.init = '1'; }
+  if (toEl)   { toEl.value   = to;   toEl.dataset.init   = '1'; }
+  syncDashboard();
+}
+
+function onDashRangeChange() { syncDashboard(); }
+
+// Seed the inputs with "today" once, on first render — but never overwrite a
+// deliberate blank ("All" preset) on subsequent re-renders.
+function initDashRangeDefaults() {
+  const fromEl = document.getElementById('dashFromDate');
+  const toEl   = document.getElementById('dashToDate');
+  const today  = fmtD(new Date());
+  if (fromEl && fromEl.dataset.init !== '1') { fromEl.value = today; fromEl.dataset.init = '1'; }
+  if (toEl   && toEl.dataset.init   !== '1') { toEl.value   = today; toEl.dataset.init   = '1'; }
 }
 
 // Extract all fields needed for the daily report row
@@ -1628,13 +1741,14 @@ function getDailyRow(t, idx) {
   const db    = ad.dayBreak    || [];
   const fb    = ad.feedbackMapping || [];
 
-  // Lead name — from activity calendar entry matched by name (verticalLeadName, then leadName)
+  // Lead name — from activity calendar entry matched by name.
+  // API field is "verticalLead" (e.g. "Muththamizh K") — NOT "verticalLeadName".
   const calEntry = (ad.activityCalendar||[]).find(a => {
     const an = (a.actName||'').toLowerCase();
     const words = (t.name||'').toLowerCase().split(' ').filter(w=>w.length>3).slice(0,3);
     return words.some(w => an.includes(w));
   });
-  const leadName = calEntry?.verticalLeadName
+  const leadName = calEntry?.verticalLead
     || calEntry?.leadName
     || '—';
 
