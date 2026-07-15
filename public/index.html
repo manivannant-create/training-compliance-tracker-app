@@ -777,6 +777,7 @@ const EPT = {
   feedbackMapping: id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcFeedbackTemplateMappingGet?trainingId=${id}&titleId=&templateId=`,
   photos:          id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcTrainingImagesGet?trainingId=${id}`,
   attendance:      id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/modCbcParticipantAttendanceGet?trainingId=${id}`,
+  feedbackStatus:  id=>`https://6va3ybcm11.execute-api.ap-south-1.amazonaws.com/api/cbctraining/feedbackStatus?trainingId=${id}`,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1111,13 +1112,14 @@ async function syncDashboard() {
 // Fetch detail endpoints for a single training and run validations
 async function syncTrainingDetail(t) {
   try {
-    const [sfRes, dbRes, pwRes, fbRes, imgRes, attRes] = await Promise.allSettled([
+    const [sfRes, dbRes, pwRes, fbRes, imgRes, attRes, fbsRes] = await Promise.allSettled([
       safe(EPT.staffMapping(t.id)),
       safe(EPT.dayBreak(t.id)),
       safe(EPT.preWork(t.id)),
       safe(EPT.feedbackMapping(t.id)),
       safe(EPT.photos(t.id)),
       safe(EPT.attendance(t.id)),
+      safe(EPT.feedbackStatus(t.id)),
     ]);
     t.apiDetails = {
       staffMapping:    toArr(sfRes.value),
@@ -1126,6 +1128,7 @@ async function syncTrainingDetail(t) {
       feedbackMapping: toArr(fbRes.value),
       photos:          toArr(imgRes.value),
       attendance:      toArr(attRes.value),
+      feedbackStatus:  toArr(fbsRes.value),
       activityCalendar:ST.globalData.activityCalendar,
       questionBank:    ST.globalData.questionBank,
     };
@@ -1806,10 +1809,12 @@ function getDailyRow(t, idx) {
         .join('; ');
   const absentReason = absentReasons || t._raw?.absentReason || '—';
 
-  // Feedback
-  const fbReceived   = fb.filter(f => f.feedbackStatus === 'Completed' || f.completed || f.responseCount > 0).length
-    || t._raw?.feedbackReceivedCount || 0;
-  const fbNotSubmitted = Math.max(0, expected - fbReceived);
+  // Feedback — from feedbackStatus API (one row per trainee, feedback_status SUBMITTED/NOT SUBMITTED)
+  const fbStatus = ad.feedbackStatus || [];
+  const fbReceived = fbStatus.length
+    ? fbStatus.filter(f => (f.feedback_status || '').toUpperCase() === 'SUBMITTED').length
+    : (t._raw?.feedbackReceivedCount || 0);
+  const fbNotSubmitted = Math.max(0, present - fbReceived);
 
   return { idx, leadName, name:t.name, actCode, id:t.id, trainerDisplay, timing, timingCls,
            expected, present, absent, absentReason, fbReceived, fbNotSubmitted, t };
@@ -2403,6 +2408,7 @@ async function runDebug() {
     { label:`R8 — Feedback Mapping (ID:${sampleId})`, url: EPT.feedbackMapping(sampleId), note:'MSC010' },
     { label:`R9 — Photos (ID:${sampleId})`, url: EPT.photos(sampleId), note:'MSC015' },
     { label:`Attendance (ID:${sampleId})`, url: EPT.attendance(sampleId), note:'Daily Report — Expected/Present/Absent' },
+    { label:`Feedback Status (ID:${sampleId})`, url: EPT.feedbackStatus(sampleId), note:'Daily Report — Feedback Received' },
   ];
 
   const results = [];
