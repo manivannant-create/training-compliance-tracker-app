@@ -270,6 +270,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="ni" data-page="compliance" onclick="showPage('compliance')"><span>✅</span> Compliance Check</div>
       <div class="nsec">Reports</div>
       <div class="ni" data-page="daily" onclick="showPage('daily')"><span>📅</span> Daily Report</div>
+      <div class="ni" data-page="fbByLead" onclick="openFeedbackByLead()"><span>🥧</span> Feedback by Lead</div>
       <div class="ni" data-page="deviations" onclick="showPage('deviations')"><span>⚠️</span> Deviations</div>
       <div class="ni" data-page="devByLead" onclick="openDevByLead()"><span>🥧</span> Deviation by Lead</div>
       <div class="ni" data-page="steps" onclick="showPage('steps')"><span>📋</span> Steps Reference</div>
@@ -494,6 +495,30 @@ textarea{resize:vertical;min-height:60px;}
           </table>
         </div>
       </div>
+
+      <!-- FEEDBACK BY LEAD (pie-chart dashboard, mirrors the Trainee Feedback Submission Update sample) -->
+      <div class="page" id="page-fbByLead">
+        <div class="sh">
+          <div>
+            <div class="stl">🥧 Feedback by Lead</div>
+            <div class="sub" id="fblSubtitle">Trainee feedback submission % per training, grouped by Lead</div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <label style="font-size:.72rem;color:var(--t2);">From:</label>
+              <input type="date" id="fblFromDate" class="bts sm" onchange="onFBLRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <label style="font-size:.72rem;color:var(--t2);">To:</label>
+              <input type="date" id="fblToDate" class="bts sm" onchange="onFBLRangeChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);">
+              <button class="btn bts sm" onclick="setFBLRangePreset('today')" style="font-size:.68rem;padding:5px 9px;">Today</button>
+              <button class="btn bts sm" onclick="setFBLRangePreset('yesterday')" style="font-size:.68rem;padding:5px 9px;">Yesterday</button>
+              <button class="btn bts sm" onclick="setFBLRangePreset('both')" style="font-size:.68rem;padding:5px 9px;">Last 2 Days</button>
+            </div>
+            <button class="btn btd sm" onclick="ensureFBLSynced(true)">🔄 Sync This Range</button>
+          </div>
+        </div>
+        <div id="fbByLeadContainer"></div>
+      </div>
+
 
 <!-- DETAIL MODAL -->
 <div class="mo" id="detailMo">
@@ -1263,6 +1288,7 @@ function renderAll() {
   renderCompliance();
   renderDeviations();
   renderDevByLead();
+  renderFeedbackByLead();
   renderDailyReport();
   const scope = getDashTrainings();
   const synced = scope.filter(t=>t.lastSynced).length;
@@ -1899,6 +1925,188 @@ function renderDevByLead() {
     <div style="background:#000;color:#fff;padding:9px 16px;font-size:.66rem;line-height:1.5;text-align:center;">
       Note: This dashboard covers all trainings starting between today (T-14) and ${targetLbl} (T) — a 14-day forward readiness window, not just a single day. Deviation = count of the 9 trackable MSC steps that failed validation, as of now, for each such training, grouped by Lead.${unsynced.length ? ` ${unsynced.length} training(s) in this window haven't synced yet and are excluded until they do — click "Sync This Window" above.` : ''}
     </div>
+  </div>`;
+}
+
+
+// ── FEEDBACK BY LEAD — pie-chart dashboard (mirrors "Trainee Feedback Submission Update" sample) ──
+// Professional/muted palette — deliberately avoids saturated rainbow colors.
+const FBL_PALETTE = ['#2c5f8a','#3f7fae','#5fa8d3','#8fb8de','#c9a05a','#6b8f71','#8a7ca8','#c07d63','#7d8597','#4a5859','#a8763e','#5c7a99'];
+const FBL_NAVY = '#12103a';
+
+function getFBLRange() {
+  const today     = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const fromEl = document.getElementById('fblFromDate');
+  const toEl   = document.getElementById('fblToDate');
+  const from = fromEl?.value || fmtD(yesterday);
+  const to   = toEl?.value   || fmtD(yesterday);
+  return from <= to ? { from, to } : { from: to, to: from };
+}
+
+function setFBLRangePreset(preset) {
+  const today     = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  let from, to;
+  if (preset === 'today')          { from = fmtD(today);     to = fmtD(today); }
+  else if (preset === 'yesterday') { from = fmtD(yesterday);  to = fmtD(yesterday); }
+  else                              { from = fmtD(yesterday);  to = fmtD(today); } // 'both'
+  const fromEl = document.getElementById('fblFromDate');
+  const toEl   = document.getElementById('fblToDate');
+  if (fromEl) fromEl.value = from;
+  if (toEl)   toEl.value   = to;
+  renderFeedbackByLead();
+}
+
+function onFBLRangeChange() { renderFeedbackByLead(); }
+
+function initFBLRangeDefaults() {
+  const fromEl = document.getElementById('fblFromDate');
+  const toEl   = document.getElementById('fblToDate');
+  if (fromEl && !fromEl.value) setFBLRangePreset('yesterday');
+  else if (toEl && !toEl.value) setFBLRangePreset('yesterday');
+}
+
+function getFBLTrainings() {
+  const { from, to } = getFBLRange();
+  return filterByDateRange(ST.trainings, from, to);
+}
+
+// Opens the page, then makes sure trainings in the selected range are actually synced
+// (feedbackStatus is a per-training API call, same staleness/scope issue as Deviation by Lead).
+function openFeedbackByLead() {
+  showPage('fbByLead');
+  initFBLRangeDefaults();
+  ensureFBLSynced(false);
+}
+
+async function ensureFBLSynced(force) {
+  const inRange = getFBLTrainings();
+  const toSync = force ? inRange : inRange.filter(t => !t.lastSynced);
+  if (!toSync.length) { renderFeedbackByLead(); return; }
+  showLoad(`Syncing ${toSync.length} training(s) for the selected range...`);
+  try {
+    await lazySyncDetails(toSync, force);
+  } catch(e) {
+    console.error('[TCT] ensureFBLSynced error:', e);
+    toast('Sync failed — ' + e.message, 'e');
+  } finally {
+    hideLoad();
+    renderFeedbackByLead();
+  }
+}
+
+// Equal-sized wedges (one per training) — each wedge's own label shows that training's
+// feedback % rather than driving the wedge's angular size. This matches the reference
+// report's style, which uses evenly-sized slices annotated with each item's own metric
+// rather than a proportional pie.
+function equalSlicePie(items, size) {
+  size = size || 150;
+  const n = items.length;
+  if (!n) return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#e5e7eb;flex:0 0 auto;"></div>`;
+  const share = 100/n;
+  let acc = 0;
+  const stops = [];
+  const labels = [];
+  items.forEach(it => {
+    const start = acc; acc += share; const end = acc;
+    stops.push(`${it.color} ${start}% ${end}%`);
+    const mid = (start+end)/2;
+    const angleRad = (mid/100*360) * Math.PI/180; // 0deg = 12 o'clock, clockwise
+    const x = 50 + 50*0.62*Math.sin(angleRad);
+    const y = 50 - 50*0.62*Math.cos(angleRad);
+    labels.push(`<div style="position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);color:#fff;font-weight:800;font-size:${Math.round(size*0.09)}px;text-shadow:0 1px 3px rgba(0,0,0,.4);white-space:nowrap;">${it.pct}%</div>`);
+  });
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:0 0 auto;">
+    <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(${stops.join(',')});box-shadow:0 2px 10px rgba(0,0,0,.18);"></div>
+    ${labels.join('')}
+  </div>`;
+}
+
+function renderFeedbackByLead() {
+  const box = document.getElementById('fbByLeadContainer');
+  if (!box) return;
+
+  const { from, to } = getFBLRange();
+  const fLbl = d => new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const dateLabel = from === to ? fLbl(from) : `${fLbl(from)} – ${fLbl(to)}`;
+  const sub = document.getElementById('fblSubtitle');
+
+  const inRange = getFBLTrainings();
+  const unsynced = inRange.filter(t => !t.lastSynced);
+  const synced   = inRange.filter(t => t.lastSynced);
+
+  if (sub) sub.textContent = `${dateLabel} — ${inRange.length} training(s)${unsynced.length ? `, ${unsynced.length} not yet synced` : ''}`;
+
+  if (!inRange.length) {
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No trainings for ${dateLabel}.</div>`;
+    return;
+  }
+  if (!synced.length) {
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">${inRange.length} training(s) found for ${dateLabel}, but none are synced yet.
+      <div style="margin-top:10px;"><button class="btn btd sm" onclick="ensureFBLSynced(true)">🔄 Sync ${inRange.length} training(s) now</button></div>
+    </div>`;
+    return;
+  }
+
+  // Group synced trainings by Lead, each carrying its own feedback %
+  const byLead = {};
+  synced.forEach(t => {
+    const row = getDailyRow(t, 0);
+    const pct = row.present > 0 ? Math.round(row.fbReceived/row.present*100) : 0;
+    if (!byLead[row.leadName]) byLead[row.leadName] = [];
+    byLead[row.leadName].push({ id:t.id, actCode:row.actCode, name:t.name, trainerDisplay:row.trainerDisplay, pct });
+  });
+  const leads = Object.keys(byLead).sort((a,b)=>a.localeCompare(b));
+
+  const leadCard = (leadName, items) => {
+    const colored = items.map((it,i) => ({ ...it, color: FBL_PALETTE[i % FBL_PALETTE.length] }));
+    const pie = equalSlicePie(colored, 150);
+    const legendRows = colored.map(it => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:.72rem;">
+      <span style="width:12px;height:12px;border-radius:2px;background:${it.color};flex:0 0 auto;"></span>
+      <span style="color:#374151;">${it.actCode || it.id}-${it.name}</span>
+    </div>`).join('');
+    return `<div style="border:1px solid #dde3ec;border-radius:9px;padding:16px;background:#fff;">
+      <div style="text-align:center;font-weight:800;color:${FBL_NAVY};font-size:.95rem;margin-bottom:2px;">${leadName} - Trainee Feedback Submission Update</div>
+      <div style="text-align:center;font-weight:700;color:#6b7280;font-size:.78rem;margin-bottom:12px;">${dateLabel}</div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:center;">
+        ${pie}
+        <div style="flex:1;min-width:160px;">${legendRows}</div>
+      </div>
+    </div>`;
+  };
+
+  // Remarks strip — reuses each training's own notes/detail field (already parsed into
+  // t.notes from the training list API) rather than a dedicated remarks endpoint, since
+  // there's no separate remarks API wired up yet.
+  const withNotes = synced.filter(t => t.notes && t.notes.trim());
+  const remarksTable = withNotes.length ? `
+    <div style="margin-top:14px;border:1px solid #dde3ec;border-radius:9px;overflow:hidden;background:#fff;">
+      <table style="width:100%;border-collapse:collapse;font-size:.76rem;">
+        <thead><tr style="background:#fef3c7;">
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid #dde3ec;color:#78350f;">Training ID</th>
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid #dde3ec;color:#78350f;">Trainer</th>
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid #dde3ec;color:#78350f;">Remarks</th>
+        </tr></thead>
+        <tbody>
+          ${withNotes.map(t => {
+            const row = getDailyRow(t, 0);
+            return `<tr>
+              <td style="padding:8px 12px;border-bottom:1px solid #f1f3f6;font-weight:700;color:${FBL_NAVY};">${t.id}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #f1f3f6;">${row.trainerDisplay}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #f1f3f6;color:#374151;">${t.notes}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  box.innerHTML = `
+  <div style="background:#f4f6f9;border-radius:12px;padding:16px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;">
+      ${leads.map(l => leadCard(l, byLead[l])).join('')}
+    </div>
+    ${remarksTable}
   </div>`;
 }
 
