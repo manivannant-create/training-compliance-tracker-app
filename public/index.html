@@ -562,15 +562,9 @@ const STEPS = [
     validate(t, ad) {
       const cal = ad.activityCalendar || [];
       if (!cal.length) return fail('No activity calendar entries found (R2 returned empty)');
-      // Match: actName contains first significant words of training name
-      const tname = (t.name||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
-      const words = tname.split(' ').filter(w=>w.length>3).slice(0,3);
-      const match = cal.find(a => {
-        const an = (a.actName||'').trim().toLowerCase();
-        return words.some(w => an.includes(w));
-      });
+      const match = matchCalendarEntry(t, cal);
       if (match) return pass(`Matched: "${(match.actName||'').trim()}" (${match.startDate||'—'}) — status: ${match.status||'—'}`);
-      return fail(`Calendar has ${cal.length} entries but none match training name "${t.name}"`);
+      return fail(`Calendar has ${cal.length} entries but none uniquely match training name "${t.name}"`);
     }
   },
   {
@@ -602,14 +596,9 @@ const STEPS = [
       // Check 2: actName in R2 matches training name
       const cal = ad.activityCalendar || [];
       if (!cal.length) return fail(`Training ID ${t.id} found in R1 ✓ but no calendar entries in R2 to cross-check actName`);
-      const tname = (t.name||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
-      const words = tname.split(' ').filter(w=>w.length>3).slice(0,3);
-      const match = cal.find(a => {
-        const an = (a.actName||'').trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
-        return words.some(w => an.includes(w));
-      });
+      const match = matchCalendarEntry(t, cal);
       if (match) return pass(`R1 ✓ ID ${t.id} exists · R2 ✓ actName matched: "${(match.actName||'').trim()}"`);
-      return fail(`R1 ✓ ID ${t.id} exists in API · R2 ✗ No matching actName in calendar for "${t.name}"`);
+      return fail(`R1 ✓ ID ${t.id} exists in API · R2 ✗ No uniquely matching actName in calendar for "${t.name}"`);
     }
   },
   {
@@ -759,6 +748,81 @@ const STALE_MS = 15 * 60 * 1000; // 15 minutes
 function pass(msg) { return {ok:true,  msg}; }
 function fail(msg) { return {ok:false, msg}; }
 function skip(msg) { return {ok:null,  msg}; }
+
+// ═══════════════════════════════════════════════════════════════
+// TRAINING ↔ ACTIVITY CALENDAR MATCHING
+// Multiple batches/groups of the same training program share near-identical
+// names (e.g. "Integrated Math Training_Grade 10 _B1" vs "..._B2"), differing
+// only by a suffix and/or date. The old logic normalized the training name,
+// took its first 3 words >3 chars, and used .find() + .some() — i.e. it
+// matched the FIRST calendar entry containing ANY ONE of those words. Since
+// words like "integrated"/"math"/"training" are shared by every batch, this
+// silently grabbed whichever batch happened to appear first in the calendar
+// array — e.g. training 1469 (actCode 261566) resolving to 260156 instead,
+// because 260156 was an earlier, differently-batched entry with matching
+// generic words. Fixed by matching in strict priority order:
+//   1. A direct ID reference on the training record, if the API ever
+//      supplies one (actId / activityCode / activityCalendarCode / act_id).
+//   2. An exact match on the FULL normalized name (treats "_B1"/"_B2" as
+//      real, meaningful suffixes instead of stripping them to noise).
+//   3. ALL significant words present (not just "some"), and only if that
+//      narrows to one candidate — or, if several batches still tie, the
+//      entry whose startDate is closest to the training's own startDate.
+// If nothing meets these bars, it returns null rather than guessing.
+// ═══════════════════════════════════════════════════════════════
+function normName(s) {
+  return (s||'').toString().trim().toLowerCase()
+    .replace(/[_\-]+/g, ' ')     // underscores/hyphens are word separators, not noise
+    .replace(/[^a-z0-9 ]/g, '')  // strip remaining punctuation
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function daysApart(d1, d2) {
+  if (!d1 || !d2) return Infinity;
+  const t1 = Date.parse(d1), t2 = Date.parse(d2);
+  if (isNaN(t1) || isNaN(t2)) return Infinity;
+  return Math.abs(t1 - t2) / 86400000;
+}
+
+function closestByDate(entries, targetDate) {
+  if (!targetDate) return entries[0];
+  return entries.reduce((best, e) => {
+    const d  = e.startDate    || e.date    || e.trainingDate;
+    const bd = best.startDate || best.date || best.trainingDate;
+    return daysApart(d, targetDate) < daysApart(bd, targetDate) ? e : best;
+  }, entries[0]);
+}
+
+function matchCalendarEntry(t, cal) {
+  if (!cal || !cal.length) return null;
+
+  // 1) Direct ID reference, if the training record carries one — most reliable, skip fuzzy matching
+  const directId = t._raw?.actId || t._raw?.activityCode || t._raw?.activityCalendarCode || t._raw?.act_id;
+  if (directId) {
+    const byId = cal.find(a => String(a.actId ?? a.id ?? a.calendarId ?? '') === String(directId));
+    if (byId) return byId;
+  }
+
+  const tNorm  = normName(t.name);
+  const tWords = tNorm.split(' ').filter(w => w.length > 3);
+
+  // 2) Exact full-name match (handles batch suffixes like "_B1" correctly)
+  const exact = cal.filter(a => normName(a.actName) === tNorm);
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1)   return closestByDate(exact, t.startDate);
+
+  // 3) ALL significant words present — not just one — then closest-date tiebreak
+  if (!tWords.length) return null;
+  const candidates = cal.filter(a => {
+    const an = normName(a.actName);
+    return tWords.every(w => an.includes(w));
+  });
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 1)   return closestByDate(candidates, t.startDate);
+
+  return null;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // API ENDPOINTS
@@ -1338,18 +1402,15 @@ async function viewDetail(id) {
 
   // R2 — Activity Calendar (global)
   const cal=ad.activityCalendar||[];
-  const calMatch=cal.filter(a=>{
-    const tname=(t.name||'').toLowerCase();
-    const words=tname.split(' ').filter(w=>w.length>3).slice(0,3);
-    return words.some(w=>(a.actName||'').toLowerCase().includes(w));
-  });
+  const calBest=matchCalendarEntry(t, cal);
+  const calMatch=calBest?[calBest]:[];
   const r2Html=`<div class="data-section">
     ${sectionHdr('R2 — Activity Calendar','modActivityCalendarNewget',calMatch.length,calMatch.length>0)}
-    ${calMatch.length?calMatch.slice(0,3).map(a=>`<div class="dgrid2">
+    ${calMatch.length?calMatch.map(a=>`<div class="dgrid2">
       ${diCell('actName',(a.actName||'').trim())}${diCell('actVertical',a.actVertical)}
       ${diCell('startDate',a.startDate)}${diCell('endDate',a.endDate)}
       ${diCell('status',a.status)}${diCell('location',a.location)}
-    </div>`).join(''):`<div class="empty-row">No matching calendar entries found for this training</div>`}
+    </div>`).join(''):`<div class="empty-row">No uniquely-matching calendar entry found for this training</div>`}
     <div style="font-size:.66rem;color:var(--t3);margin-top:4px;">${cal.length} total calendar entries loaded globally</div>
   </div>`;
 
@@ -1747,13 +1808,9 @@ function getDailyRow(t, idx) {
   const db    = ad.dayBreak    || [];
   const fb    = ad.feedbackMapping || [];
 
-  // Lead name — from activity calendar entry matched by name.
+  // Lead name — from activity calendar entry, matched via the shared (batch-aware) matcher.
   // API field is "verticalLead" (e.g. "Muththamizh K") — NOT "verticalLeadName".
-  const calEntry = (ad.activityCalendar||[]).find(a => {
-    const an = (a.actName||'').toLowerCase();
-    const words = (t.name||'').toLowerCase().split(' ').filter(w=>w.length>3).slice(0,3);
-    return words.some(w => an.includes(w));
-  });
+  const calEntry = matchCalendarEntry(t, ad.activityCalendar || []);
   const leadName = calEntry?.verticalLead
     || calEntry?.leadName
     || '—';
