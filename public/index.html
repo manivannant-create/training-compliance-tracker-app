@@ -371,7 +371,7 @@ textarea{resize:vertical;min-height:60px;}
       <!-- DEVIATION BY LEAD (pie-chart dashboard, mirrors the Mandatory Steps Pending report) -->
       <div class="page" id="page-devByLead">
         <div class="sh">
-          <div><div class="stl">Deviation by Lead</div><div class="sub">Trainings bucketed by number of failed mandatory steps, grouped by Lead</div></div>
+          <div><div class="stl">Deviation by Lead</div><div class="sub">Trainings starting exactly 14 days from today (T-14 readiness check), bucketed by failed mandatory steps, grouped by Lead</div></div>
         </div>
         <div id="devByLeadContainer"></div>
       </div>
@@ -1737,12 +1737,21 @@ function renderDevByLead() {
   const box = document.getElementById('devByLeadContainer');
   if (!box) return;
 
+  // T-14 window: "today" is T-14, training start date is T — i.e. we only look at
+  // trainings whose start date is exactly 14 days from today. This is a forward-looking
+  // readiness check (are pre-training mandatory steps on track 2 weeks out?), not a
+  // "till date" backward-looking report.
+  const today14 = new Date(); today14.setHours(0,0,0,0); today14.setDate(today14.getDate()+14);
+  const targetISO = fmtD(today14);
+  const targetLbl = today14.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+
   // Only trainings that have actually been synced/validated — otherwise calc()
-  // would count all 9 steps as failed by default, which isn't a real deviation.
-  const synced = ST.trainings.filter(t => t.lastSynced);
+  // would count all 9 steps as failed by default, which isn't a real deviation —
+  // AND whose start date falls exactly on the T-14 target date.
+  const synced = ST.trainings.filter(t => t.lastSynced && t.startDate === targetISO);
 
   if (!synced.length) {
-    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No synced trainings yet — sync the dashboard first to compute deviations by lead.</div>`;
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No synced trainings starting on ${targetLbl} (T-14 from today) — nothing to show for this window.</div>`;
     return;
   }
 
@@ -1808,12 +1817,20 @@ function renderDevByLead() {
 
   const now = new Date();
   const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+  const targetStr = `${String(today14.getDate()).padStart(2,'0')}/${String(today14.getMonth()+1).padStart(2,'0')}/${today14.getFullYear()}`;
+
+  // Compact footer: date chips + legend chips in one row, note in small text below —
+  // replaces the old tall right-hand sidebar.
+  const legendChip = (color, label) => `<div style="display:flex;align-items:center;gap:6px;">
+    <span style="width:22px;height:14px;border-radius:3px;background:${color};flex:0 0 auto;"></span>
+    <span style="font-weight:700;font-size:.7rem;white-space:nowrap;">${label}</span>
+  </div>`;
 
   box.innerHTML = `
-  <div style="display:flex;gap:14px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 22px rgba(0,0,0,.35);flex-wrap:wrap;">
-    <div style="flex:1 1 640px;padding:16px;min-width:0;">
+  <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 22px rgba(0,0,0,.35);">
+    <div style="padding:16px;">
       <div style="background:${DEVREP_NAVY};color:#fff;text-align:center;font-weight:800;font-size:1.08rem;padding:11px;border-radius:8px;margin-bottom:12px;">
-        Mandatory Steps Deviation Till Date — Distribution by Lead
+        Mandatory Steps Deviation — Trainings Starting ${targetLbl} (T-14 Readiness Check)
       </div>
       <div style="display:flex;justify-content:center;gap:26px;margin-bottom:14px;font-size:.8rem;font-weight:700;color:#111827;flex-wrap:wrap;">
         <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_GREEN};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>0</span>
@@ -1825,27 +1842,16 @@ function renderDevByLead() {
       </div>
       <div style="margin-top:12px;">${summaryBox}</div>
     </div>
-    <div style="flex:0 0 230px;background:${DEVREP_NAVY};color:#fff;padding:16px;display:flex;flex-direction:column;gap:16px;">
-      <div style="background:#fff;color:${DEVREP_NAVY};font-weight:800;font-size:1.25rem;text-align:center;padding:10px;border-radius:8px;">
-        ${dateStr} <span style="color:${DEVREP_BLUE};">●</span>
+    <div style="background:${DEVREP_NAVY};color:#fff;padding:10px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+      <div style="background:#fff;color:${DEVREP_NAVY};font-weight:800;font-size:.85rem;padding:5px 12px;border-radius:6px;white-space:nowrap;">
+        Today: ${dateStr} <span style="color:${DEVREP_BLUE};">●</span> Target: ${targetStr}
       </div>
-      <div style="display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;align-items:center;gap:9px;">
-          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_GREEN};flex:0 0 auto;"></span>
-          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">Zero Deviations — All Mandatory Steps Completed On Time</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:9px;">
-          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_BLUE};flex:0 0 auto;"></span>
-          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">1–2 Mandatory Steps Deviated</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:9px;">
-          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_RED};flex:0 0 auto;"></span>
-          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">More Than 2 Mandatory Steps Deviated</span>
-        </div>
-      </div>
-      <div style="background:#000;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:13px;font-size:.7rem;line-height:1.55;text-align:center;">
-        Note: This dashboard reflects mandatory-step <strong>deviations</strong> (the 9 trackable MSC steps that failed validation) across all currently synced trainings. A training is bucketed by its total count of failed trackable steps as of now, then grouped by its Lead. Steps that could not be validated because a training hasn't been synced yet are excluded from this analysis.
-      </div>
+      ${legendChip(DEVREP_GREEN, 'Zero Deviations')}
+      ${legendChip(DEVREP_BLUE,  '1–2 Steps Deviated')}
+      ${legendChip(DEVREP_RED,   '>2 Steps Deviated')}
+    </div>
+    <div style="background:#000;color:#fff;padding:9px 16px;font-size:.66rem;line-height:1.5;text-align:center;">
+      Note: This dashboard covers only trainings whose start date falls exactly 14 days from today (T-14 readiness check) — i.e. today is T-14 and the training date is T. Deviation = count of the 9 trackable MSC steps that failed validation, as of now, for each such training, grouped by Lead. Trainings not yet synced are excluded.
     </div>
   </div>`;
 }
