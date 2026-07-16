@@ -271,6 +271,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="nsec">Reports</div>
       <div class="ni" data-page="daily" onclick="showPage('daily')"><span>📅</span> Daily Report</div>
       <div class="ni" data-page="deviations" onclick="showPage('deviations')"><span>⚠️</span> Deviations</div>
+      <div class="ni" data-page="devByLead" onclick="showPage('devByLead')"><span>🥧</span> Deviation by Lead</div>
       <div class="ni" data-page="steps" onclick="showPage('steps')"><span>📋</span> Steps Reference</div>
       <div class="ni" data-page="debug" onclick="showPage('debug')"><span>🔌</span> API Debug</div>
       <div class="nsec">Manage</div>
@@ -365,6 +366,14 @@ textarea{resize:vertical;min-height:60px;}
           <button class="btn btd sm" onclick="genPDF()">📄 Escalation Report</button>
         </div>
         <div id="devList"></div>
+      </div>
+
+      <!-- DEVIATION BY LEAD (pie-chart dashboard, mirrors the Mandatory Steps Pending report) -->
+      <div class="page" id="page-devByLead">
+        <div class="sh">
+          <div><div class="stl">Deviation by Lead</div><div class="sub">Trainings bucketed by number of failed mandatory steps, grouped by Lead</div></div>
+        </div>
+        <div id="devByLeadContainer"></div>
       </div>
 
       <!-- STEPS REFERENCE -->
@@ -1252,6 +1261,7 @@ function renderAll() {
   renderTrainings();
   renderCompliance();
   renderDeviations();
+  renderDevByLead();
   renderDailyReport();
   const scope = getDashTrainings();
   const synced = scope.filter(t=>t.lastSynced).length;
@@ -1674,7 +1684,173 @@ function renderDeviations() {
   }).join('');
 }
 
-// ── STEPS REFERENCE TABLE ──────────────────────────────────────
+// ── DEVIATION BY LEAD — pie-chart dashboard (mirrors "Mandatory Steps Pending" report) ──
+const DEVREP_GREEN = '#5a8f3f';
+const DEVREP_BLUE   = '#3a6ea5';
+const DEVREP_RED    = '#c0392b';
+const DEVREP_NAVY   = '#12103a';
+
+// Renders a flat pie (conic-gradient, no external chart lib) with a % label on each
+// non-zero wedge, positioned at the wedge's mid-angle. Single 100% segments are
+// centered, matching the reference report's style.
+function pieChart(segs, size) {
+  size = size || 90;
+  const total = segs.reduce((a,s)=>a+s.value,0);
+  if (!total) {
+    return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#e5e7eb;flex:0 0 auto;"></div>`;
+  }
+  const nonZero = segs.filter(s=>s.value>0);
+  let acc = 0;
+  const stops = [];
+  const labels = [];
+  segs.forEach(s => {
+    if (s.value <= 0) return;
+    const startPct = acc/total*100;
+    acc += s.value;
+    const endPct = acc/total*100;
+    stops.push(`${s.color} ${startPct}% ${endPct}%`);
+    const pct = (s.value/total*100).toFixed(1)+'%';
+    let x = 50, y = 50; // default: dead center (used when only one wedge)
+    if (nonZero.length > 1) {
+      const midPct = (startPct+endPct)/2;
+      const angleRad = (midPct/100*360) * Math.PI/180; // 0deg = 12 o'clock, clockwise
+      x = 50 + 50*0.6*Math.sin(angleRad);
+      y = 50 - 50*0.6*Math.cos(angleRad);
+    }
+    labels.push(`<div style="position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);color:#fff;font-weight:700;font-size:${Math.round(size*0.13)}px;text-shadow:0 1px 3px rgba(0,0,0,.35);white-space:nowrap;">${pct}</div>`);
+  });
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:0 0 auto;">
+    <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(${stops.join(',')});"></div>
+    ${labels.join('')}
+  </div>`;
+}
+
+function devLegendSwatchRow(color, label, value) {
+  return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:.72rem;">
+    <span style="width:10px;height:10px;border-radius:2px;background:${color};flex:0 0 auto;"></span>
+    <span style="flex:1;color:#374151;">${label}</span>
+    <span style="font-weight:700;color:${DEVREP_NAVY};font-family:'JetBrains Mono',monospace;">${value}</span>
+  </div>`;
+}
+
+function renderDevByLead() {
+  const box = document.getElementById('devByLeadContainer');
+  if (!box) return;
+
+  // Only trainings that have actually been synced/validated — otherwise calc()
+  // would count all 9 steps as failed by default, which isn't a real deviation.
+  const synced = ST.trainings.filter(t => t.lastSynced);
+
+  if (!synced.length) {
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No synced trainings yet — sync the dashboard first to compute deviations by lead.</div>`;
+    return;
+  }
+
+  // Bucket each training by (a) its lead and (b) its number of failed trackable steps
+  const byLead = {};
+  synced.forEach(t => {
+    const ad = t.apiDetails || {};
+    const calEntry = matchCalendarEntry(t, ad.activityCalendar || []);
+    const lead = calEntry?.verticalLead || calEntry?.leadName || 'Unassigned';
+    const failed = calc(t).failed;
+    const bucket = failed === 0 ? 'zero' : failed <= 2 ? 'lo' : 'hi';
+    if (!byLead[lead]) byLead[lead] = { zero:0, lo:0, hi:0 };
+    byLead[lead][bucket]++;
+  });
+
+  const leads = Object.keys(byLead).sort((a,b)=>a.localeCompare(b));
+  const grand = { zero:0, lo:0, hi:0 };
+  leads.forEach(l => { grand.zero+=byLead[l].zero; grand.lo+=byLead[l].lo; grand.hi+=byLead[l].hi; });
+  const grandTotal = grand.zero+grand.lo+grand.hi;
+
+  const leadBox = (name, b) => {
+    const total = b.zero+b.lo+b.hi;
+    const pie = pieChart([
+      {value:b.zero, color:DEVREP_GREEN},
+      {value:b.lo,   color:DEVREP_BLUE},
+      {value:b.hi,   color:DEVREP_RED},
+    ], 84);
+    return `<div style="border:1px solid #dde3ec;border-radius:9px;padding:11px 13px;background:#fff;">
+      <div style="text-align:center;font-weight:800;color:${DEVREP_NAVY};font-size:.9rem;margin-bottom:9px;">${name}</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        ${pie}
+        <div style="flex:1;min-width:0;">
+          ${devLegendSwatchRow(DEVREP_GREEN, '0', b.zero)}
+          ${devLegendSwatchRow(DEVREP_BLUE,  '1 to 2', b.lo)}
+          ${devLegendSwatchRow(DEVREP_RED,   'More than 2', b.hi)}
+          <div style="margin-top:7px;padding-top:6px;border-top:1px solid #eef1f5;font-size:.75rem;color:#374151;">
+            Total: <span style="font-weight:800;color:${DEVREP_NAVY};font-family:'JetBrains Mono',monospace;">${total}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  const summaryPie = pieChart([
+    {value:grand.zero, color:DEVREP_GREEN},
+    {value:grand.lo,   color:DEVREP_BLUE},
+    {value:grand.hi,   color:DEVREP_RED},
+  ], 120);
+  const pct = v => grandTotal ? ((v/grandTotal)*100).toFixed(1)+'%' : '0%';
+
+  const summaryBox = `<div style="border:1px solid #dde3ec;border-radius:9px;padding:14px 16px;background:#fff;display:flex;align-items:center;gap:22px;flex-wrap:wrap;">
+    ${summaryPie}
+    <div style="flex:1;min-width:220px;">
+      <div style="font-weight:800;color:${DEVREP_NAVY};font-size:.85rem;margin-bottom:8px;">Summary (Total Across All Leads)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem;">
+        <tr><td style="padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DEVREP_GREEN};margin-right:7px;"></span>0</td><td style="text-align:right;font-weight:700;font-family:'JetBrains Mono',monospace;">${grand.zero}</td><td style="text-align:right;color:#6b7280;padding-left:10px;">(${pct(grand.zero)})</td></tr>
+        <tr><td style="padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DEVREP_BLUE};margin-right:7px;"></span>1 to 2</td><td style="text-align:right;font-weight:700;font-family:'JetBrains Mono',monospace;">${grand.lo}</td><td style="text-align:right;color:#6b7280;padding-left:10px;">(${pct(grand.lo)})</td></tr>
+        <tr><td style="padding:2px 0;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DEVREP_RED};margin-right:7px;"></span>More than 2</td><td style="text-align:right;font-weight:700;font-family:'JetBrains Mono',monospace;">${grand.hi}</td><td style="text-align:right;color:#6b7280;padding-left:10px;">(${pct(grand.hi)})</td></tr>
+        <tr><td style="padding-top:6px;border-top:1px solid #eef1f5;font-weight:800;color:${DEVREP_NAVY};">Grand Total:</td><td style="text-align:right;padding-top:6px;border-top:1px solid #eef1f5;font-weight:800;color:${DEVREP_NAVY};font-family:'JetBrains Mono',monospace;">${grandTotal}</td><td style="text-align:right;padding-top:6px;border-top:1px solid #eef1f5;color:#6b7280;padding-left:10px;">(100%)</td></tr>
+      </table>
+    </div>
+  </div>`;
+
+  const now = new Date();
+  const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+
+  box.innerHTML = `
+  <div style="display:flex;gap:14px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 22px rgba(0,0,0,.35);flex-wrap:wrap;">
+    <div style="flex:1 1 640px;padding:16px;min-width:0;">
+      <div style="background:${DEVREP_NAVY};color:#fff;text-align:center;font-weight:800;font-size:1.08rem;padding:11px;border-radius:8px;margin-bottom:12px;">
+        Mandatory Steps Deviation Till Date — Distribution by Lead
+      </div>
+      <div style="display:flex;justify-content:center;gap:26px;margin-bottom:14px;font-size:.8rem;font-weight:700;color:#111827;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_GREEN};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>0</span>
+        <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_BLUE};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>1 to 2</span>
+        <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_RED};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>More than 2</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
+        ${leads.map(l => leadBox(l, byLead[l])).join('')}
+      </div>
+      <div style="margin-top:12px;">${summaryBox}</div>
+    </div>
+    <div style="flex:0 0 230px;background:${DEVREP_NAVY};color:#fff;padding:16px;display:flex;flex-direction:column;gap:16px;">
+      <div style="background:#fff;color:${DEVREP_NAVY};font-weight:800;font-size:1.25rem;text-align:center;padding:10px;border-radius:8px;">
+        ${dateStr} <span style="color:${DEVREP_BLUE};">●</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_GREEN};flex:0 0 auto;"></span>
+          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">Zero Deviations — All Mandatory Steps Completed On Time</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_BLUE};flex:0 0 auto;"></span>
+          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">1–2 Mandatory Steps Deviated</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span style="width:36px;height:22px;border-radius:3px;background:${DEVREP_RED};flex:0 0 auto;"></span>
+          <span style="font-weight:700;font-size:.76rem;line-height:1.25;">More Than 2 Mandatory Steps Deviated</span>
+        </div>
+      </div>
+      <div style="background:#000;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:13px;font-size:.7rem;line-height:1.55;text-align:center;">
+        Note: This dashboard reflects mandatory-step <strong>deviations</strong> (the 9 trackable MSC steps that failed validation) across all currently synced trainings. A training is bucketed by its total count of failed trackable steps as of now, then grouped by its Lead. Steps that could not be validated because a training hasn't been synced yet are excluded from this analysis.
+      </div>
+    </div>
+  </div>`;
+}
+
+
 function renderStepsTable() {
   const phClass=ph=>ph.includes('Pre')?'ph-pre':ph.includes('During')?'ph-dur':'ph-post';
   document.getElementById('stepsBody').innerHTML=STEPS.map(s=>`<tr>
