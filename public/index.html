@@ -271,7 +271,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="nsec">Reports</div>
       <div class="ni" data-page="daily" onclick="showPage('daily')"><span>📅</span> Daily Report</div>
       <div class="ni" data-page="deviations" onclick="showPage('deviations')"><span>⚠️</span> Deviations</div>
-      <div class="ni" data-page="devByLead" onclick="showPage('devByLead')"><span>🥧</span> Deviation by Lead</div>
+      <div class="ni" data-page="devByLead" onclick="openDevByLead()"><span>🥧</span> Deviation by Lead</div>
       <div class="ni" data-page="steps" onclick="showPage('steps')"><span>📋</span> Steps Reference</div>
       <div class="ni" data-page="debug" onclick="showPage('debug')"><span>🔌</span> API Debug</div>
       <div class="nsec">Manage</div>
@@ -371,7 +371,8 @@ textarea{resize:vertical;min-height:60px;}
       <!-- DEVIATION BY LEAD (pie-chart dashboard, mirrors the Mandatory Steps Pending report) -->
       <div class="page" id="page-devByLead">
         <div class="sh">
-          <div><div class="stl">Deviation by Lead</div><div class="sub">Trainings starting exactly 14 days from today (T-14 readiness check), bucketed by failed mandatory steps, grouped by Lead</div></div>
+          <div><div class="stl">Deviation by Lead</div><div class="sub">Trainings starting in the next 14 days (T-14 readiness window), bucketed by failed mandatory steps, grouped by Lead</div></div>
+          <button class="btn btd sm" onclick="ensureDevByLeadSynced(true)">🔄 Sync This Window</button>
         </div>
         <div id="devByLeadContainer"></div>
       </div>
@@ -1733,25 +1734,71 @@ function devLegendSwatchRow(color, label, value) {
   </div>`;
 }
 
+// Shared window calc for the Deviation-by-Lead report: today (T-14) through the
+// target date (T = today+14), inclusive on both ends — i.e. every training starting
+// anywhere in the next 14 days, not just the single day exactly 14 days out.
+function getDevByLeadWindow() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(today); target.setDate(target.getDate()+14);
+  return {
+    today, target,
+    todayISO:  fmtD(today),
+    targetISO: fmtD(target),
+    todayLbl:  today.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+    targetLbl: target.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+  };
+}
+
+// Opens the page, then makes sure trainings in the T-14 window are actually synced —
+// the default dashboard sync only lazy-loads details for trainings inside the
+// Dashboard date-range filter, which usually doesn't reach 14 days out, so this
+// report needs its own sync trigger rather than relying on that.
+function openDevByLead() {
+  showPage('devByLead');
+  ensureDevByLeadSynced(false);
+}
+
+async function ensureDevByLeadSynced(force) {
+  const { todayISO, targetISO } = getDevByLeadWindow();
+  const inWindow = ST.trainings.filter(t => t.startDate >= todayISO && t.startDate <= targetISO);
+  const toSync = force ? inWindow : inWindow.filter(t => !t.lastSynced);
+  if (!toSync.length) { renderDevByLead(); return; }
+  showLoad(`Syncing ${toSync.length} training(s) in the T-14 window...`);
+  try {
+    await lazySyncDetails(toSync, force);
+  } catch(e) {
+    console.error('[TCT] ensureDevByLeadSynced error:', e);
+    toast('Sync failed — ' + e.message, 'e');
+  } finally {
+    hideLoad();
+    renderDevByLead();
+  }
+}
+
+
 function renderDevByLead() {
   const box = document.getElementById('devByLeadContainer');
   if (!box) return;
 
-  // T-14 window: "today" is T-14, training start date is T — i.e. we only look at
-  // trainings whose start date is exactly 14 days from today. This is a forward-looking
-  // readiness check (are pre-training mandatory steps on track 2 weeks out?), not a
-  // "till date" backward-looking report.
-  const today14 = new Date(); today14.setHours(0,0,0,0); today14.setDate(today14.getDate()+14);
-  const targetISO = fmtD(today14);
-  const targetLbl = today14.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const { todayISO, targetISO, todayLbl, targetLbl } = getDevByLeadWindow();
 
-  // Only trainings that have actually been synced/validated — otherwise calc()
-  // would count all 9 steps as failed by default, which isn't a real deviation —
-  // AND whose start date falls exactly on the T-14 target date.
-  const synced = ST.trainings.filter(t => t.lastSynced && t.startDate === targetISO);
+  // Every training starting anywhere between today and T (14 days out), inclusive —
+  // regardless of sync state, so we can tell the difference between "genuinely no
+  // trainings in this window" and "trainings exist but haven't been synced yet".
+  const inWindow = ST.trainings.filter(t => t.startDate >= todayISO && t.startDate <= targetISO);
+  const unsynced = inWindow.filter(t => !t.lastSynced);
+  // Only trainings that have actually been synced/validated go into the chart —
+  // otherwise calc() would count all 9 steps as failed by default, which isn't a real deviation.
+  const synced = inWindow.filter(t => t.lastSynced);
 
+  if (!inWindow.length) {
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No trainings starting between ${todayLbl} and ${targetLbl} (T-14 window) — nothing to show.</div>`;
+    return;
+  }
   if (!synced.length) {
-    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">No synced trainings starting on ${targetLbl} (T-14 from today) — nothing to show for this window.</div>`;
+    box.innerHTML = `<div class="empty" style="padding:30px;text-align:center;color:var(--t2);">${inWindow.length} training(s) found in the ${todayLbl}–${targetLbl} window, but none are synced yet.
+      <div style="margin-top:10px;"><button class="btn btd sm" onclick="ensureDevByLeadSynced(true)">🔄 Sync ${inWindow.length} training(s) now</button></div>
+    </div>`;
     return;
   }
 
@@ -1817,7 +1864,6 @@ function renderDevByLead() {
 
   const now = new Date();
   const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-  const targetStr = `${String(today14.getDate()).padStart(2,'0')}/${String(today14.getMonth()+1).padStart(2,'0')}/${today14.getFullYear()}`;
 
   // Compact footer: date chips + legend chips in one row, note in small text below —
   // replaces the old tall right-hand sidebar.
@@ -1830,28 +1876,28 @@ function renderDevByLead() {
   <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 22px rgba(0,0,0,.35);">
     <div style="padding:16px;">
       <div style="background:${DEVREP_NAVY};color:#fff;text-align:center;font-weight:800;font-size:1.08rem;padding:11px;border-radius:8px;margin-bottom:12px;">
-        Mandatory Steps Deviation — Trainings Starting ${targetLbl} (T-14 Readiness Check)
+        Mandatory Steps Deviation — Trainings Starting ${todayLbl}–${targetLbl} (T-14 Readiness Window)${unsynced.length ? ` · ${unsynced.length} not yet synced` : ''}
       </div>
       <div style="display:flex;justify-content:center;gap:26px;margin-bottom:14px;font-size:.8rem;font-weight:700;color:#111827;flex-wrap:wrap;">
         <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_GREEN};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>0</span>
         <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_BLUE};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>1 to 2</span>
         <span><span style="display:inline-block;width:13px;height:13px;background:${DEVREP_RED};border-radius:2px;margin-right:6px;vertical-align:middle;"></span>More than 2</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,240px));justify-content:start;gap:12px;">
         ${leads.map(l => leadBox(l, byLead[l])).join('')}
       </div>
       <div style="margin-top:12px;">${summaryBox}</div>
     </div>
     <div style="background:${DEVREP_NAVY};color:#fff;padding:10px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
       <div style="background:#fff;color:${DEVREP_NAVY};font-weight:800;font-size:.85rem;padding:5px 12px;border-radius:6px;white-space:nowrap;">
-        Today: ${dateStr} <span style="color:${DEVREP_BLUE};">●</span> Target: ${targetStr}
+        Today: ${dateStr} <span style="color:${DEVREP_BLUE};">●</span> Window ends: ${targetLbl}
       </div>
       ${legendChip(DEVREP_GREEN, 'Zero Deviations')}
       ${legendChip(DEVREP_BLUE,  '1–2 Steps Deviated')}
       ${legendChip(DEVREP_RED,   '>2 Steps Deviated')}
     </div>
     <div style="background:#000;color:#fff;padding:9px 16px;font-size:.66rem;line-height:1.5;text-align:center;">
-      Note: This dashboard covers only trainings whose start date falls exactly 14 days from today (T-14 readiness check) — i.e. today is T-14 and the training date is T. Deviation = count of the 9 trackable MSC steps that failed validation, as of now, for each such training, grouped by Lead. Trainings not yet synced are excluded.
+      Note: This dashboard covers all trainings starting between today (T-14) and ${targetLbl} (T) — a 14-day forward readiness window, not just a single day. Deviation = count of the 9 trackable MSC steps that failed validation, as of now, for each such training, grouped by Lead.${unsynced.length ? ` ${unsynced.length} training(s) in this window haven't synced yet and are excluded until they do — click "Sync This Window" above.` : ''}
     </div>
   </div>`;
 }
